@@ -57,6 +57,8 @@ def decode(hexstr, rx_lat, rx_lon, max_fix=1):
     if r.get("df") != 17 or not r.get("crc_valid"):
         return None
     out = {"icao": r["icao"], "tc": r.get("typecode"), "errorbits": nfix}
+    if r.get("callsign"):  # aircraft identification message (TC 1-4)
+        out["flight"] = r["callsign"].strip().rstrip("_")
     if r.get("latitude") is not None:  # airborne position message
         out.update(lat=r["latitude"], lon=r["longitude"], alt=r.get("altitude"))
     if r.get("groundspeed") is not None:  # airborne velocity message

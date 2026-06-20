@@ -46,6 +46,9 @@ class TrackStore:
             t=t,
         )
 
+    def update_callsign(self, icao, flight):
+        self._st(icao)["flight"] = flight
+
     def latest(self, icao):
         return dict(self._state.get(icao, {}))
 

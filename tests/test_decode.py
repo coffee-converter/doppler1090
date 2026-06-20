@@ -80,3 +80,10 @@ def test_decode_repairs_two_bit_error_only_in_aggressive():
     assert decode(bad, 52.0, 4.0, max_fix=1) is None
     out = decode(bad, 52.0, 4.0, max_fix=2)
     assert out is not None and out["errorbits"] == 2
+
+
+def test_decode_extracts_callsign_from_identification():
+    out = decode("8D4840D6202CC371C32CE0576098", 52.0, 4.0)
+    assert out is not None
+    assert out["flight"] == "KLM1023"
+    assert "lat" not in out and "speed" not in out  # ident carries neither

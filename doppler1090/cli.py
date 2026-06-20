@@ -67,6 +67,8 @@ def process_chunk(t, iq, fs, rx_llh, store, burst_len, max_fix=1, phase_search=1
         sl = iq[o:o + burst_len]
         msl = mag[o:o + burst_len]
         icao = dec["icao"]
+        if "flight" in dec:
+            store.update_callsign(icao, dec["flight"])
         if "lat" in dec:
             store.update_position(icao, t, dec["lat"], dec["lon"], dec["alt"])
         if "speed" in dec:

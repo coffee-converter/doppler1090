@@ -82,3 +82,9 @@ def test_fit_rejects_offsets_that_do_not_track_doppler():
     fit = store.fit("ac")
     assert abs(fit.scale) < 0.2
     assert abs(fit.correlation) < 0.5
+
+
+def test_update_callsign_appears_in_latest():
+    store = TrackStore()
+    store.update_callsign("abc123", "UAL456")
+    assert store.latest("abc123")["flight"] == "UAL456"
