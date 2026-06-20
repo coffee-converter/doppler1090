@@ -1,3 +1,4 @@
+import threading
 import numpy as np
 from dataclasses import dataclass
 from .geometry import radial_velocity, predicted_doppler
@@ -32,6 +33,7 @@ class TrackStore:
         self._samples = {}
         self._state = {}
         self.max_age = max_age
+        self.lock = threading.Lock()  # held externally around mutation/snapshot
 
     def _st(self, icao):
         return self._state.setdefault(icao, {})

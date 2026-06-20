@@ -129,3 +129,13 @@ def test_joint_fit_falls_back_to_independent_for_single_aircraft():
         store._inject("solo", float(i), 1000.0 + i, -100.0 + 5.0 * i, 0.0, 0.0, 270.0)
     fits = store.joint_fit(min_aircraft=2)
     assert "solo" in fits and fits["solo"] is not None
+
+
+def test_trackstore_has_lock():
+    import threading
+    store = TrackStore()
+    assert isinstance(store.lock, type(threading.Lock()))
+    # usable as a context manager
+    with store.lock:
+        store.update_callsign("abc", "X")
+    assert store.latest("abc")["flight"] == "X"
