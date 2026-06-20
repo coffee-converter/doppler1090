@@ -31,9 +31,9 @@ def process_chunk(t, iq, fs, rx_llh, store, burst_len):
             store.update_velocity(icao, t, dec["speed"], dec["track"], dec["vrate"])
         mask = (msl > msl.mean()).astype(float)
         f_off = estimate_burst_offset(sl, mask, fs)
-        before = len(store._samples.get(icao, []))
+        before = store.burst_count(icao)
         store.add_burst(icao, t, f_off, rx_llh)
-        added += len(store._samples.get(icao, [])) - before
+        added += store.burst_count(icao) - before
     return added
 
 

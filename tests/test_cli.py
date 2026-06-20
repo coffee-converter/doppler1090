@@ -31,3 +31,22 @@ def test_process_chunk_decodes_real_position_into_store():
     assert "lat" in state
     assert abs(state["lat"] - 52.2572) < 0.01
     assert abs(state["lon"] - 3.9193) < 0.01
+
+
+def test_process_chunk_adds_burst_with_estimated_offset():
+    # Full Doppler path: position THEN velocity for the same ICAO. Once both are
+    # present, a burst is deposited with the carrier offset estimated and a
+    # predicted Doppler computed from geometry.
+    fs = 2_400_000
+    store = TrackStore()
+    rx = (52.0, 4.0, 0.0)
+    pos = _synth_burst("8D40621D58C382D690C8AC2863A7", fs, f_off=1500.0)
+    vel = _synth_burst("8D40621D994409940838174550B1", fs, f_off=1500.0)
+    pad = np.zeros(64, dtype=complex)
+    process_chunk(0.0, np.concatenate([pos, pad]), fs, rx, store, burst_len=len(pos))
+    added = process_chunk(1.0, np.concatenate([vel, pad]), fs, rx, store, burst_len=len(vel))
+    assert added == 1
+    assert store.burst_count("40621D") == 1
+    sample = store._samples["40621D"][-1]
+    assert abs(sample.f_offset - 1500.0) < 50.0   # carrier estimate recovered the injected offset
+    assert np.isfinite(sample.doppler_pred)        # predicted Doppler computed from geometry

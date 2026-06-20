@@ -65,6 +65,9 @@ class TrackStore:
     def icaos(self):
         return list(self._samples.keys())
 
+    def burst_count(self, icao):
+        return len(self._samples.get(icao, []))
+
     def quality(self, icao):
         s = self._samples.get(icao, [])
         if len(s) < MIN_BURSTS:
