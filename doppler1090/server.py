@@ -1,3 +1,7 @@
+import json
+import os
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
 import numpy as np
 from .geometry import geodetic_to_ecef
 from .terminal import confidence
@@ -52,3 +56,57 @@ def build_snapshot(store, rx_llh, min_conf=0.0):
 
 def _f(v):
     return None if v is None else float(v)
+
+
+WEB_DIR = os.path.join(os.path.dirname(__file__), "web")
+_CTYPES = {"html": "text/html", "js": "application/javascript",
+           "css": "text/css", "json": "application/json"}
+
+
+def _make_handler(store, rx_llh, lock, min_conf):
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass  # silence per-request logging
+
+        def do_GET(self):
+            if self.path.split("?", 1)[0] == "/api/state":
+                with lock:
+                    body = json.dumps(build_snapshot(store, rx_llh, min_conf)).encode()
+                self._send(200, "application/json", body)
+            else:
+                self._static()
+
+        def _static(self):
+            rel = "index.html" if self.path in ("/", "") else self.path.lstrip("/")
+            full = os.path.normpath(os.path.join(WEB_DIR, rel))
+            if not full.startswith(WEB_DIR) or not os.path.isfile(full):
+                self._send(404, "text/plain", b"not found")
+                return
+            ext = full.rsplit(".", 1)[-1]
+            with open(full, "rb") as fh:
+                body = fh.read()
+            self._send(200, _CTYPES.get(ext, "application/octet-stream"), body)
+
+        def _send(self, code, ctype, body):
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    return Handler
+
+
+def make_server(store, rx_llh, lock, min_conf, port=0):
+    return ThreadingHTTPServer(("127.0.0.1", port),
+                               _make_handler(store, rx_llh, lock, min_conf))
+
+
+def serve(store, rx_llh, lock, min_conf, port, open_browser=False):
+    httpd = make_server(store, rx_llh, lock, min_conf, port)
+    actual = httpd.server_address[1]
+    if open_browser:
+        import webbrowser
+        webbrowser.open(f"http://127.0.0.1:{actual}/")
+    print(f"doppler1090 web dashboard: http://127.0.0.1:{actual}/")
+    httpd.serve_forever()

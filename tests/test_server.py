@@ -67,3 +67,29 @@ def test_snapshot_is_json_serializable():
     rt = json.loads(json.dumps(snap))
     assert rt["receiver"]["lat"] == 42.0
     assert isinstance(rt["aircraft"][0]["doppler"][0]["measured"], float)
+
+
+import threading
+import urllib.request
+from doppler1090.server import make_server
+
+
+def test_http_endpoints_serve_state_and_index():
+    store = TrackStore()
+    _seed_tracking(store, "AAA111", seed=1)
+    _seed_tracking(store, "BBB222", seed=2)
+    lock = store.lock
+    httpd = make_server(store, (42.0, -88.0, 240.0), lock, 0.0, port=0)
+    th = threading.Thread(target=httpd.serve_forever, daemon=True)
+    th.start()
+    try:
+        port = httpd.server_address[1]
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/state") as r:
+            assert r.status == 200
+            data = json.loads(r.read())
+        assert "receiver" in data and "aircraft" in data
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/") as r:
+            assert r.status == 200
+            assert b"<html" in r.read().lower()
+    finally:
+        httpd.shutdown()
