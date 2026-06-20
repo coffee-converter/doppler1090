@@ -22,11 +22,11 @@ def detect_preambles(mag, fs, threshold_factor=3.0):
     high = mag[base[:, None] + pulse_idx[None, :]].sum(axis=1)
     low = mag[base[:, None] + low_idx[None, :]].sum(axis=1) + 1e-9
     cand = np.where(high > threshold_factor * low)[0]
-    cand = cand[np.argsort(-high[cand])]
-    offsets = []
-    last = -win
-    for c in cand:
-        if c - last >= win:
-            offsets.append(int(c))
-            last = int(c)
-    return offsets
+    # Non-maximum suppression: take strongest candidates first, drop any
+    # within one preamble window of an already-accepted (stronger) peak.
+    order = cand[np.argsort(-high[cand])]
+    accepted = []
+    for c in order:
+        if all(abs(c - o) >= win for o in accepted):
+            accepted.append(int(c))
+    return sorted(accepted)
