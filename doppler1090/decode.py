@@ -28,6 +28,8 @@ def decode(hexstr, rx_lat, rx_lon):
         r = pms.decode(hexstr, reference=(rx_lat, rx_lon))
     except Exception:
         return None
+    if r is None:
+        return None
     if r.get("df") != 17 or not r.get("crc_valid"):
         return None
     out = {"icao": r["icao"], "tc": r.get("typecode")}

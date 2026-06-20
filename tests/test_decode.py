@@ -46,3 +46,8 @@ def test_decode_velocity_message():
 def test_decode_rejects_non_df17():
     # DF11 all-call reply, not an extended squitter
     assert decode("5D484FDEA248F5", 52.0, 4.0) is None
+
+
+def test_decode_rejects_full_length_non_df17():
+    # 28-char frame that decodes as DF20 (not DF17) -> rejected by the df check.
+    assert decode("A040621D58C382D690C8AC2863A7", 52.0, 4.0) is None
