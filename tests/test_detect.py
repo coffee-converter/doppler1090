@@ -40,3 +40,19 @@ def test_detects_two_separated_preambles():
     offsets = detect_preambles(mag, fs)
     assert any(abs(o - 1000) <= 1 for o in offsets)
     assert any(abs(o - 4000) <= 1 for o in offsets)
+
+
+def test_nms_collapses_dense_cluster_keeps_separated():
+    # Many candidates packed within one window must collapse to a single peak,
+    # while a far-apart burst is still kept (guards the bisect NMS).
+    fs, total = 2_400_000, 8000
+    mag = np.full(total, 0.2)
+    spb = fs / 1e6
+    for off, height in ((1000, 5.0), (1003, 9.0), (1006, 6.0), (5000, 7.0)):
+        for us in (0.0, 1.0, 3.5, 4.5):
+            mag[off + int(round(us * spb))] = height
+    offs = detect_preambles(mag, fs)
+    near_first = [o for o in offs if abs(o - 1003) <= 8]
+    near_second = [o for o in offs if abs(o - 5000) <= 2]
+    assert len(near_first) == 1          # dense cluster collapsed to one
+    assert len(near_second) == 1         # separated burst preserved

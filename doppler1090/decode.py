@@ -1,25 +1,36 @@
+import functools
 import numpy as np
 import pyModeS as pms
 from pyModeS import util
 from .correct import fix_message
 
+_HEX = np.array(list("0123456789ABCDEF"))
+
 
 def bits_to_hex(bits):
-    s = "".join(str(b) for b in bits)
-    return "".join("%X" % int(s[i:i + 4], 2) for i in range(0, len(s), 4))
+    bits = np.asarray(bits, dtype=int).reshape(-1, 4)
+    nibbles = bits[:, 0] * 8 + bits[:, 1] * 4 + bits[:, 2] * 2 + bits[:, 3]
+    return "".join(_HEX[nibbles])
+
+
+@functools.lru_cache(maxsize=8)
+def _chip_indices(fs):
+    """Sample indices of the two half-bit chips for each of the 112 data bits,
+    cached per sample rate (they depend only on fs)."""
+    spb = fs / 1e6
+    start = int(round(8.0 * spb))
+    k = np.arange(112)
+    c0 = start + np.round(k * spb).astype(int)
+    c1 = start + np.round((k + 0.5) * spb).astype(int)
+    return c0, c1
 
 
 def demodulate(iq_slice, fs):
     mag = np.abs(np.asarray(iq_slice))
-    spb = fs / 1e6
-    start = int(round(8.0 * spb))
-    bits = []
-    for k in range(112):
-        c0 = start + int(round(k * spb))
-        c1 = start + int(round((k + 0.5) * spb))
-        if c1 >= len(mag):
-            return None
-        bits.append(1 if mag[c0] > mag[c1] else 0)
+    c0, c1 = _chip_indices(fs)
+    if c1[-1] >= len(mag):
+        return None
+    bits = (mag[c0] > mag[c1]).astype(int)  # PPM: first half stronger -> 1
     return bits_to_hex(bits)
 
 

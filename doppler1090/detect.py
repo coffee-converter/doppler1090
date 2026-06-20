@@ -1,3 +1,4 @@
+import bisect
 import numpy as np
 
 PREAMBLE_PULSES_US = (0.0, 1.0, 3.5, 4.5)
@@ -22,11 +23,19 @@ def detect_preambles(mag, fs, threshold_factor=3.0):
     high = mag[base[:, None] + pulse_idx[None, :]].sum(axis=1)
     low = mag[base[:, None] + low_idx[None, :]].sum(axis=1) + 1e-9
     cand = np.where(high > threshold_factor * low)[0]
-    # Non-maximum suppression: take strongest candidates first, drop any
-    # within one preamble window of an already-accepted (stronger) peak.
+    # Non-maximum suppression: take strongest candidates first, drop any within
+    # one preamble window of an already-accepted (stronger) peak. Accepted peaks
+    # are kept sorted, so each is pairwise >= win apart; therefore the closest
+    # accepted peak to a new candidate is one of its two sorted neighbors, and we
+    # only need to check those (O(N log N) via bisect, not O(N^2)).
     order = cand[np.argsort(-high[cand])]
-    accepted = []
+    accepted = []  # kept sorted by position
     for c in order:
-        if all(abs(c - o) >= win for o in accepted):
-            accepted.append(int(c))
-    return sorted(accepted)
+        c = int(c)
+        pos = bisect.bisect_left(accepted, c)
+        if pos < len(accepted) and accepted[pos] - c < win:
+            continue
+        if pos > 0 and c - accepted[pos - 1] < win:
+            continue
+        accepted.insert(pos, c)
+    return accepted
