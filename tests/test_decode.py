@@ -51,3 +51,32 @@ def test_decode_rejects_non_df17():
 def test_decode_rejects_full_length_non_df17():
     # 28-char frame that decodes as DF20 (not DF17) -> rejected by the df check.
     assert decode("A040621D58C382D690C8AC2863A7", 52.0, 4.0) is None
+
+
+def _flip_hex_bit(hexstr, i):
+    b = list(bin(int(hexstr, 16))[2:].zfill(112))
+    b[i] = "1" if b[i] == "0" else "0"
+    return "%028X" % int("".join(b), 2)
+
+
+def test_decode_repairs_single_bit_error_by_default():
+    # A real position frame with one corrupted data bit decodes correctly
+    # because single-bit correction is on by default.
+    bad = _flip_hex_bit("8D40621D58C382D690C8AC2863A7", 60)
+    out = decode(bad, 52.0, 4.0)
+    assert out is not None
+    assert out["icao"] == "40621D"
+    assert out["errorbits"] == 1
+    assert abs(out["lat"] - 52.2572) < 0.01
+
+
+def test_decode_does_not_repair_when_max_fix_zero():
+    bad = _flip_hex_bit("8D40621D58C382D690C8AC2863A7", 60)
+    assert decode(bad, 52.0, 4.0, max_fix=0) is None
+
+
+def test_decode_repairs_two_bit_error_only_in_aggressive():
+    bad = _flip_hex_bit(_flip_hex_bit("8D40621D58C382D690C8AC2863A7", 60), 90)
+    assert decode(bad, 52.0, 4.0, max_fix=1) is None
+    out = decode(bad, 52.0, 4.0, max_fix=2)
+    assert out is not None and out["errorbits"] == 2

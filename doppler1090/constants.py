@@ -1,4 +1,4 @@
 F0_HZ = 1090e6
 C_M_S = 299792458.0
-DEFAULT_FS = 2_400_000
+DEFAULT_FS = 2_000_000  # 2 samples/bit - clean, integer-aligned bit slicing (as dump1090)
 DEFAULT_FREQ = 1_090_000_000
