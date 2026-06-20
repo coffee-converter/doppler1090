@@ -1,5 +1,6 @@
 import numpy as np
 from doppler1090.track import TrackStore
+from doppler1090.geometry import radial_velocity, predicted_doppler
 
 
 def _populate(store, icao, n, track_deg_fn, drift=0.7, const=1234.0, scale=1.0):
@@ -39,3 +40,45 @@ def test_fit_none_when_too_few_bursts():
     store = TrackStore()
     _populate(store, "ghi789", n=4, track_deg_fn=lambda i: 270.0)
     assert store.fit("ghi789") is None
+
+
+def test_fit_recovers_doppler_track_with_noise_on_realistic_pass():
+    rng = np.random.default_rng(1)
+    store = TrackStore()
+    rx = (52.0, 4.0, 0.0)
+    for i in range(40):
+        t = float(i)
+        lat = 51.85 + 0.0075 * i  # straight pass crossing near overhead
+        store.update_position("ac", t, lat, 4.0, 10000.0)
+        store.update_velocity("ac", t, 480.0, 0.0, 0.0)
+        s = store.latest("ac")
+        vr = radial_velocity(rx, (s["lat"], s["lon"], s["alt"]),
+                             s["speed"], s["track"], s["vrate"])
+        dop = predicted_doppler(vr)
+        f = 1234.0 + 0.7 * t + 1.0 * dop + rng.normal(0, 50.0)
+        store._inject("ac", t, f, dop, lat, 4.0, 0.0)
+    fit = store.fit("ac")
+    assert abs(fit.scale - 1.0) < 0.1
+    assert fit.correlation > 0.9
+
+
+def test_fit_rejects_offsets_that_do_not_track_doppler():
+    # Same realistic pass, but the measured offsets carry NO Doppler component
+    # (only baseline + noise). The fit must NOT report a false Doppler track.
+    rng = np.random.default_rng(2)
+    store = TrackStore()
+    rx = (52.0, 4.0, 0.0)
+    for i in range(40):
+        t = float(i)
+        lat = 51.85 + 0.0075 * i
+        store.update_position("ac", t, lat, 4.0, 10000.0)
+        store.update_velocity("ac", t, 480.0, 0.0, 0.0)
+        s = store.latest("ac")
+        vr = radial_velocity(rx, (s["lat"], s["lon"], s["alt"]),
+                             s["speed"], s["track"], s["vrate"])
+        dop = predicted_doppler(vr)
+        f = 1234.0 + 0.7 * t + rng.normal(0, 50.0)
+        store._inject("ac", t, f, dop, lat, 4.0, 0.0)
+    fit = store.fit("ac")
+    assert abs(fit.scale) < 0.2
+    assert abs(fit.correlation) < 0.5

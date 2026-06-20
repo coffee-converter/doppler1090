@@ -36,3 +36,14 @@ def test_burst_offset_with_irregular_mask():
     iq = np.exp(2j * np.pi * f_true * t)
     mask = (rng.random(n) < 0.55).astype(float)
     assert abs(estimate_burst_offset(iq, mask, fs) - f_true) < 500.0
+
+
+def test_burst_offset_recovers_offset_under_noise():
+    # A realistic noisy OOK burst: the gapped-tone estimate must stay bounded.
+    rng = np.random.default_rng(3)
+    fs, n, f_true = 2_400_000, 288, 1500.0
+    t = np.arange(n) / fs
+    mask = (rng.random(n) < 0.5).astype(float)
+    sig = np.exp(2j * np.pi * f_true * t) * mask
+    noise = 0.1 * (rng.standard_normal(n) + 1j * rng.standard_normal(n)) * mask
+    assert abs(estimate_burst_offset(sig + noise, mask, fs) - f_true) < 500.0
