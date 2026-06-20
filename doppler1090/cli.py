@@ -1,4 +1,5 @@
 import argparse
+import threading
 import numpy as np
 from rich.live import Live
 from .constants import DEFAULT_FS, DEFAULT_FREQ
@@ -9,6 +10,7 @@ from .estimate import estimate_burst_offset
 from .decode import _chip_indices, bits_to_hex
 from .track import TrackStore
 from .terminal import build_rows, build_table
+from . import server
 
 BURST_US = 120.0
 
@@ -81,7 +83,7 @@ def process_chunk(t, iq, fs, rx_llh, store, burst_len, max_fix=1, phase_search=1
     return added
 
 
-def main(argv=None):
+def build_parser():
     p = argparse.ArgumentParser(prog="doppler1090")
     p.add_argument("--lat", type=float, required=True)
     p.add_argument("--lon", type=float, required=True)
@@ -103,13 +105,34 @@ def main(argv=None):
                         "this (0..1); default 0.25")
     p.add_argument("--show-all", action="store_true",
                    help="show every tracked aircraft regardless of confidence")
-    args = p.parse_args(argv)
+    p.add_argument("--web", action="store_true",
+                   help="serve the browser dashboard instead of the terminal table")
+    p.add_argument("--port", type=int, default=8080,
+                   help="web dashboard port (default 8080)")
+    return p
+
+
+def main(argv=None):
+    args = build_parser().parse_args(argv)
 
     rx_llh = (args.lat, args.lon, args.alt)
     store = TrackStore()
     burst_len = int(round(BURST_US * args.fs / 1e6)) + 8
     max_fix = 2 if args.aggressive else 1
     min_conf = 0.0 if args.show_all else args.min_confidence
+
+    if args.web:
+        def capture_loop():
+            for t, iq in iq_chunks(args.freq, args.fs, args.gain, args.ppm):
+                with store.lock:
+                    process_chunk(t, iq, args.fs, rx_llh, store, burst_len,
+                                  max_fix=max_fix, phase_search=args.phase_search,
+                                  threshold=args.threshold)
+        threading.Thread(target=capture_loop, daemon=True).start()
+        server.serve(store, rx_llh, store.lock, min_conf, args.port,
+                     open_browser=True)
+        return
+
     # rich.Live with screen=True paints into the alternate screen buffer (like
     # top/htop): a fixed region redrawn in place each frame. This avoids both the
     # flicker of clear()/reprint and the header duplication that inline Live

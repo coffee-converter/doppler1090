@@ -1,5 +1,5 @@
 import numpy as np
-from doppler1090.cli import process_chunk
+from doppler1090.cli import process_chunk, build_parser
 from doppler1090.track import TrackStore
 
 
@@ -50,3 +50,17 @@ def test_process_chunk_adds_burst_with_estimated_offset():
     sample = store._samples["40621D"][-1]
     assert abs(sample.f_offset - 1500.0) < 50.0   # carrier estimate recovered the injected offset
     assert np.isfinite(sample.doppler_pred)        # predicted Doppler computed from geometry
+
+
+def test_parser_has_web_flags():
+    p = build_parser()
+    args = p.parse_args(["--lat", "1.0", "--lon", "2.0", "--web", "--port", "9999"])
+    assert args.web is True
+    assert args.port == 9999
+
+
+def test_parser_web_defaults_off():
+    p = build_parser()
+    args = p.parse_args(["--lat", "1.0", "--lon", "2.0"])
+    assert args.web is False
+    assert args.port == 8080
