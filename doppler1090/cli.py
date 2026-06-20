@@ -52,10 +52,11 @@ def main(argv=None):
     rx_llh = (args.lat, args.lon, args.alt)
     store = TrackStore()
     burst_len = int(round(BURST_US * args.fs / 1e6)) + 8
-    # rich.Live redraws the table in place via diffing - no clear()/reprint, so
-    # the display updates smoothly instead of flashing. screen=False keeps it
-    # inline (and leaves the final frame visible on exit).
-    with Live(build_table([]), refresh_per_second=4, transient=False) as live:
+    # rich.Live with screen=True paints into the alternate screen buffer (like
+    # top/htop): a fixed region redrawn in place each frame. This avoids both the
+    # flicker of clear()/reprint and the header duplication that inline Live
+    # causes when the table's height changes between frames.
+    with Live(build_table([]), refresh_per_second=4, screen=True) as live:
         for t, iq in iq_chunks(args.freq, args.fs, args.gain, args.ppm):
             process_chunk(t, iq, args.fs, rx_llh, store, burst_len)
             live.update(build_table(build_rows(store, rx_llh)))
