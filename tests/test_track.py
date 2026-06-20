@@ -88,3 +88,44 @@ def test_update_callsign_appears_in_latest():
     store = TrackStore()
     store.update_callsign("abc123", "UAL456")
     assert store.latest("abc123")["flight"] == "UAL456"
+
+
+def test_joint_fit_removes_shared_drift_and_recovers_unit_scale():
+    # Three aircraft with DIFFERENT (linear) Doppler, plus a SHARED receiver
+    # clock drift. A drift-ignoring per-aircraft fit inflates Scale; the joint
+    # fit (which models the shared drift) recovers Scale ~ 1.
+    import numpy as np
+    store = TrackStore()
+    n = 40
+    tn = np.linspace(0, 1, n)
+    drift = 400.0 * tn  # shared receiver clock drift (Hz)
+    planes = {
+        "A": -100.0 + 300.0 * tn,
+        "B": 50.0 - 250.0 * tn,
+        "C": 200.0 * tn,
+    }
+    consts = {"A": 1000.0, "B": -500.0, "C": 3000.0}
+    for ic, d in planes.items():
+        f = consts[ic] + 1.0 * d + drift  # true scale = 1
+        for i in range(n):
+            store._inject(ic, float(i), float(f[i]), float(d[i]), 0.0, 0.0, 270.0)
+
+    fits = store.joint_fit(drift_order=1)
+    for ic in planes:
+        assert abs(fits[ic].scale - 1.0) < 0.1, (ic, fits[ic].scale)
+        assert fits[ic].correlation > 0.99
+
+    # Naive drift-ignoring fit on aircraft A inflates scale well above 1.
+    d = planes["A"]
+    f = consts["A"] + d + drift
+    A = np.column_stack([np.ones_like(d), d])
+    naive_scale = np.linalg.lstsq(A, f, rcond=None)[0][1]
+    assert naive_scale > 1.3
+
+
+def test_joint_fit_falls_back_to_independent_for_single_aircraft():
+    store = TrackStore()
+    for i in range(20):
+        store._inject("solo", float(i), 1000.0 + i, -100.0 + 5.0 * i, 0.0, 0.0, 270.0)
+    fits = store.joint_fit(min_aircraft=2)
+    assert "solo" in fits and fits["solo"] is not None

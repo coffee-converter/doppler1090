@@ -45,9 +45,10 @@ def build_rows(store, rx_llh, min_conf=0.0):
     rows don't reshuffle). Aircraft whose fit confidence is below min_conf are
     omitted."""
     rx = geodetic_to_ecef(*rx_llh)
+    fits = store.joint_fit()  # shared clock-drift removed across all aircraft
     rows = []
     for icao in store.icaos():  # dict insertion order == first-seen order
-        fit = store.fit(icao)
+        fit = fits.get(icao)
         if fit is None:
             continue
         conf = confidence(fit)
