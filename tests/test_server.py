@@ -64,4 +64,6 @@ def test_snapshot_is_json_serializable():
     _seed_tracking(store, "BBB222", seed=2)
     snap = build_snapshot(store, (42.0, -88.0, 240.0))
     # round-trips with no custom encoder (no numpy types leak through)
-    assert json.loads(json.dumps(snap))["receiver"]["lat"] == 42.0
+    rt = json.loads(json.dumps(snap))
+    assert rt["receiver"]["lat"] == 42.0
+    assert isinstance(rt["aircraft"][0]["doppler"][0]["measured"], float)

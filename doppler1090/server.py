@@ -45,7 +45,7 @@ def build_snapshot(store, rx_llh, min_conf=0.0):
             "doppler": doppler,
         })
     return {
-        "receiver": {"lat": rx_llh[0], "lon": rx_llh[1], "alt": rx_llh[2]},
+        "receiver": {"lat": _f(rx_llh[0]), "lon": _f(rx_llh[1]), "alt": _f(rx_llh[2])},
         "aircraft": aircraft,
     }
 
