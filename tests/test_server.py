@@ -1,7 +1,9 @@
 import json
+import threading
+import urllib.request
 import numpy as np
 from doppler1090.track import TrackStore
-from doppler1090.server import build_snapshot
+from doppler1090.server import build_snapshot, make_server
 
 
 def _seed_tracking(store, icao, n=40, span=600.0, noise=10.0, seed=0,
@@ -69,11 +71,6 @@ def test_snapshot_is_json_serializable():
     assert isinstance(rt["aircraft"][0]["doppler"][0]["measured"], float)
 
 
-import threading
-import urllib.request
-from doppler1090.server import make_server
-
-
 def test_http_endpoints_serve_state_and_index():
     store = TrackStore()
     _seed_tracking(store, "AAA111", seed=1)
@@ -91,5 +88,18 @@ def test_http_endpoints_serve_state_and_index():
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/") as r:
             assert r.status == 200
             assert b"<html" in r.read().lower()
+    finally:
+        httpd.shutdown()
+
+
+def test_static_strips_query_string():
+    store = TrackStore()
+    httpd = make_server(store, (42.0, -88.0, 240.0), store.lock, 0.0, port=0)
+    th = threading.Thread(target=httpd.serve_forever, daemon=True)
+    th.start()
+    try:
+        port = httpd.server_address[1]
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/index.html?v=2") as r:
+            assert r.status == 200
     finally:
         httpd.shutdown()

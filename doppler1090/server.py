@@ -77,9 +77,10 @@ def _make_handler(store, rx_llh, lock, min_conf):
                 self._static()
 
         def _static(self):
-            rel = "index.html" if self.path in ("/", "") else self.path.lstrip("/")
+            clean = self.path.split("?", 1)[0]
+            rel = "index.html" if clean in ("/", "") else clean.lstrip("/")
             full = os.path.normpath(os.path.join(WEB_DIR, rel))
-            if not full.startswith(WEB_DIR) or not os.path.isfile(full):
+            if not full.startswith(WEB_DIR + os.sep) or not os.path.isfile(full):
                 self._send(404, "text/plain", b"not found")
                 return
             ext = full.rsplit(".", 1)[-1]
