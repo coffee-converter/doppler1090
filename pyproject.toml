@@ -8,5 +8,8 @@ dependencies = ["numpy", "scipy", "pyModeS>=3", "pyrtlsdr", "rich"]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
+[project.scripts]
+doppler1090 = "doppler1090.cli:main"
+
 [tool.setuptools]
 packages = ["doppler1090"]
