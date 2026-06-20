@@ -4,7 +4,15 @@ import numpy as np
 
 def iq_chunks(freq, fs, gain, ppm, chunk_size=262144, sdr_factory=None):
     if sdr_factory is None:
-        from pyrtlsdr import RtlSdr
+        try:
+            from rtlsdr import RtlSdr  # PyPI package "pyrtlsdr" imports as "rtlsdr"
+        except (ImportError, OSError, AttributeError) as e:
+            raise SystemExit(
+                "Could not load the RTL-SDR driver. For the RTL-SDR Blog v4 you need "
+                "the rtl-sdr-blog fork of librtlsdr (the stock/osmocom build is too old "
+                "and lacks rtlsdr_set_dithering), plus the pyrtlsdr Python package.\n"
+                f"Original error: {e}"
+            )
         sdr_factory = RtlSdr
     sdr = sdr_factory()
     try:
