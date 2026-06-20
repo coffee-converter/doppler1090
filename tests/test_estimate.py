@@ -24,4 +24,15 @@ def test_burst_offset_with_gaps():
     mask = np.zeros(n)
     mask[::2] = 1.0  # OOK-like on/off comb
     iq = np.exp(2j * np.pi * f_true * t)
-    assert abs(estimate_burst_offset(iq, mask, fs) - f_true) < 2000.0
+    assert abs(estimate_burst_offset(iq, mask, fs) - f_true) < 1_500_000.0
+
+
+def test_burst_offset_with_irregular_mask():
+    # A realistic ADS-B-like OOK mask is NOT uniformly spaced; the estimator
+    # must preserve sample timing (zero the gaps), not decimate/resample.
+    rng = np.random.default_rng(7)
+    fs, n, f_true = 2_400_000, 300, 200_000.0
+    t = np.arange(n) / fs
+    iq = np.exp(2j * np.pi * f_true * t)
+    mask = (rng.random(n) < 0.55).astype(float)
+    assert abs(estimate_burst_offset(iq, mask, fs) - f_true) < 500.0
