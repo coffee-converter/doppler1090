@@ -59,4 +59,4 @@ def test_build_table_columns_and_rows():
     rows = build_rows(store, (0.0, 0.0, 0.0))
     table = build_table(rows)
     assert table.row_count == len(rows)
-    assert len(table.columns) == 10  # added Conf column
+    assert len(table.columns) == 14  # ICAO,Flight,Alt,Spd,Trk,V/S,Range,2xDop,Scale,Corr,Conf,Quality,Bursts

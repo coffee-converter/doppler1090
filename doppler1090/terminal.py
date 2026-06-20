@@ -26,6 +26,10 @@ def confidence(fit):
 class Row:
     icao: str
     flight: str
+    alt_ft: float | None
+    speed_kt: float | None
+    track_deg: float | None
+    vrate_fpm: float | None
     range_km: float
     dop_pred: float
     dop_meas: float
@@ -58,6 +62,10 @@ def build_rows(store, rx_llh, min_conf=0.0):
         rows.append(Row(
             icao=icao,
             flight=s.get("flight", ""),
+            alt_ft=s.get("alt"),
+            speed_kt=s.get("speed_kt"),
+            track_deg=s.get("track"),
+            vrate_fpm=s.get("vrate_fpm"),
             range_km=rng_km,
             dop_pred=float(samples[-1].doppler_pred),
             dop_meas=float(fit.measured_doppler[-1]),
@@ -74,12 +82,18 @@ def build_table(rows):
     """Build the rich Table for the given rows. Pure (no I/O), so it can be
     handed to rich.Live for flicker-free in-place updates."""
     table = Table(title="doppler1090 - measured vs predicted Doppler")
-    for col in ("ICAO", "Flight", "Range km", "Dop pred Hz", "Dop meas Hz",
+    for col in ("ICAO", "Flight", "Alt ft", "Spd kt", "Trk°", "V/S fpm",
+                "Range km", "Dop pred Hz", "Dop meas Hz",
                 "Scale", "Corr", "Conf", "Quality", "Bursts"):
         table.add_column(col, justify="right")
     for r in rows:
         table.add_row(
-            r.icao, r.flight, f"{r.range_km:.1f}",
+            r.icao, r.flight,
+            "-" if r.alt_ft is None else f"{r.alt_ft:.0f}",
+            "-" if r.speed_kt is None else f"{r.speed_kt:.0f}",
+            "-" if r.track_deg is None else f"{r.track_deg:.0f}",
+            "-" if r.vrate_fpm is None else f"{r.vrate_fpm:+.0f}",
+            f"{r.range_km:.1f}",
             f"{r.dop_pred:+.0f}", f"{r.dop_meas:+.0f}",
             f"{r.scale:.2f}", f"{r.corr:.2f}", f"{r.conf:.2f}",
             f"{r.quality:.2f}", str(r.bursts),

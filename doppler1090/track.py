@@ -41,9 +41,11 @@ class TrackStore:
 
     def update_velocity(self, icao, t, speed_kt, track_deg, vrate_fpm):
         self._st(icao).update(
-            speed=speed_kt * KT_TO_MPS,
+            speed=speed_kt * KT_TO_MPS,    # m/s, for the Doppler geometry
             track=track_deg,
-            vrate=vrate_fpm * FPM_TO_MPS,
+            vrate=vrate_fpm * FPM_TO_MPS,  # m/s, for the Doppler geometry
+            speed_kt=speed_kt,             # original units, for display
+            vrate_fpm=vrate_fpm,
             t=t,
         )
 
