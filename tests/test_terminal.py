@@ -1,6 +1,6 @@
 import numpy as np
 from doppler1090.track import TrackStore
-from doppler1090.terminal import build_rows
+from doppler1090.terminal import build_rows, build_table
 
 
 def _seed(store, icao, n, trk):
@@ -23,3 +23,12 @@ def test_build_rows_sorted_by_quality_desc():
     assert [r.icao for r in rows][0] == "straight"
     assert rows[0].quality >= rows[-1].quality
     assert rows[0].bursts == 40
+
+
+def test_build_table_has_one_row_per_aircraft():
+    store = TrackStore()
+    _seed(store, "straight", 40, 270.0)
+    rows = build_rows(store, (0.0, 0.0, 0.0))
+    table = build_table(rows)
+    assert table.row_count == len(rows)
+    assert len(table.columns) == 9

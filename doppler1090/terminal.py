@@ -48,7 +48,9 @@ def build_rows(store, rx_llh):
     return rows
 
 
-def render(rows):
+def build_table(rows):
+    """Build the rich Table for the given rows. Pure (no I/O), so it can be
+    handed to rich.Live for flicker-free in-place updates."""
     table = Table(title="doppler1090 - measured vs predicted Doppler")
     for col in ("ICAO", "Flight", "Range km", "Dop pred Hz", "Dop meas Hz",
                 "Scale", "Corr", "Quality", "Bursts"):
@@ -60,5 +62,9 @@ def render(rows):
             f"{r.scale:.2f}", f"{r.corr:.2f}",
             f"{r.quality:.2f}", str(r.bursts),
         )
-    _console.clear()
-    _console.print(table)
+    return table
+
+
+def render(rows):
+    """One-shot print (used outside a Live context)."""
+    _console.print(build_table(rows))

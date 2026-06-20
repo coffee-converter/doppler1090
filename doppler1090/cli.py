@@ -1,12 +1,13 @@
 import argparse
 import numpy as np
+from rich.live import Live
 from .constants import DEFAULT_FS, DEFAULT_FREQ
 from .capture import iq_chunks
 from .detect import magnitude, detect_preambles
 from .decode import demodulate, decode
 from .estimate import estimate_burst_offset
 from .track import TrackStore
-from .terminal import build_rows, render
+from .terminal import build_rows, build_table
 
 BURST_US = 120.0
 
@@ -51,9 +52,13 @@ def main(argv=None):
     rx_llh = (args.lat, args.lon, args.alt)
     store = TrackStore()
     burst_len = int(round(BURST_US * args.fs / 1e6)) + 8
-    for t, iq in iq_chunks(args.freq, args.fs, args.gain, args.ppm):
-        process_chunk(t, iq, args.fs, rx_llh, store, burst_len)
-        render(build_rows(store, rx_llh))
+    # rich.Live redraws the table in place via diffing - no clear()/reprint, so
+    # the display updates smoothly instead of flashing. screen=False keeps it
+    # inline (and leaves the final frame visible on exit).
+    with Live(build_table([]), refresh_per_second=4, transient=False) as live:
+        for t, iq in iq_chunks(args.freq, args.fs, args.gain, args.ppm):
+            process_chunk(t, iq, args.fs, rx_llh, store, burst_len)
+            live.update(build_table(build_rows(store, rx_llh)))
 
 
 if __name__ == "__main__":
