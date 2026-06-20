@@ -1,0 +1,12 @@
+[project]
+name = "doppler1090"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["numpy", "scipy", "pyModeS>=3", "pyrtlsdr", "rich"]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["doppler1090"]
