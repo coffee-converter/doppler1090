@@ -98,12 +98,18 @@ def main(argv=None):
     p.add_argument("--threshold", type=float, default=2.0,
                    help="preamble detection threshold (lower = more sensitive, "
                         "more CPU; 2.0 recovers ~70%% more frames than 3.0)")
+    p.add_argument("--min-confidence", type=float, default=0.25,
+                   help="hide aircraft whose Doppler-fit confidence is below "
+                        "this (0..1); default 0.25")
+    p.add_argument("--show-all", action="store_true",
+                   help="show every tracked aircraft regardless of confidence")
     args = p.parse_args(argv)
 
     rx_llh = (args.lat, args.lon, args.alt)
     store = TrackStore()
     burst_len = int(round(BURST_US * args.fs / 1e6)) + 8
     max_fix = 2 if args.aggressive else 1
+    min_conf = 0.0 if args.show_all else args.min_confidence
     # rich.Live with screen=True paints into the alternate screen buffer (like
     # top/htop): a fixed region redrawn in place each frame. This avoids both the
     # flicker of clear()/reprint and the header duplication that inline Live
@@ -113,7 +119,7 @@ def main(argv=None):
             process_chunk(t, iq, args.fs, rx_llh, store, burst_len,
                           max_fix=max_fix, phase_search=args.phase_search,
                           threshold=args.threshold)
-            live.update(build_table(build_rows(store, rx_llh)))
+            live.update(build_table(build_rows(store, rx_llh, min_conf=min_conf)))
 
 
 if __name__ == "__main__":

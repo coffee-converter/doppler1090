@@ -6,6 +6,21 @@ from .geometry import geodetic_to_ecef
 
 _console = Console()
 
+# Predicted-Doppler peak-to-peak (Hz) at which a pass is considered fully
+# "observable". Below this the fit is poorly conditioned, so confidence is
+# scaled down proportionally.
+DOP_SPAN_REF_HZ = 400.0
+
+
+def confidence(fit):
+    """How much to trust this Doppler fit, in [0, 1].
+
+    Combines correlation (does the measured offset track the predicted curve?)
+    with observability (did the predicted Doppler actually sweep enough to be
+    measurable?). Negative correlation -> 0 (it isn't tracking)."""
+    observability = min(1.0, fit.dop_span / DOP_SPAN_REF_HZ)
+    return max(0.0, fit.correlation) * observability
+
 
 @dataclass
 class Row:
@@ -16,16 +31,23 @@ class Row:
     dop_meas: float
     scale: float
     corr: float
+    conf: float
     quality: float
     bursts: int
 
 
-def build_rows(store, rx_llh):
+def build_rows(store, rx_llh, min_conf=0.0):
+    """Build display rows in stable first-seen order (oldest aircraft first, so
+    rows don't reshuffle). Aircraft whose fit confidence is below min_conf are
+    omitted."""
     rx = geodetic_to_ecef(*rx_llh)
     rows = []
-    for icao in store.icaos():
+    for icao in store.icaos():  # dict insertion order == first-seen order
         fit = store.fit(icao)
         if fit is None:
+            continue
+        conf = confidence(fit)
+        if conf < min_conf:
             continue
         s = store.latest(icao)
         rng_km = 0.0
@@ -41,10 +63,10 @@ def build_rows(store, rx_llh):
             dop_meas=float(fit.measured_doppler[-1]),
             scale=fit.scale,
             corr=fit.correlation,
+            conf=conf,
             quality=fit.quality,
             bursts=fit.n,
         ))
-    rows.sort(key=lambda r: r.quality, reverse=True)
     return rows
 
 
@@ -53,13 +75,13 @@ def build_table(rows):
     handed to rich.Live for flicker-free in-place updates."""
     table = Table(title="doppler1090 - measured vs predicted Doppler")
     for col in ("ICAO", "Flight", "Range km", "Dop pred Hz", "Dop meas Hz",
-                "Scale", "Corr", "Quality", "Bursts"):
+                "Scale", "Corr", "Conf", "Quality", "Bursts"):
         table.add_column(col, justify="right")
     for r in rows:
         table.add_row(
             r.icao, r.flight, f"{r.range_km:.1f}",
             f"{r.dop_pred:+.0f}", f"{r.dop_meas:+.0f}",
-            f"{r.scale:.2f}", f"{r.corr:.2f}",
+            f"{r.scale:.2f}", f"{r.corr:.2f}", f"{r.conf:.2f}",
             f"{r.quality:.2f}", str(r.bursts),
         )
     return table

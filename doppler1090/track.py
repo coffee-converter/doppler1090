@@ -24,6 +24,7 @@ class FitResult:
     n: int
     quality: float
     measured_doppler: np.ndarray
+    dop_span: float  # peak-to-peak predicted Doppler over the window (Hz)
 
 
 class TrackStore:
@@ -97,4 +98,6 @@ class TrackStore:
             corr = float(np.corrcoef(measured, d)[0, 1])
         else:
             corr = 0.0
-        return FitResult(float(scale), corr, len(s), self.quality(icao), measured)
+        dop_span = float(d.max() - d.min())
+        return FitResult(float(scale), corr, len(s), self.quality(icao),
+                         measured, dop_span)
