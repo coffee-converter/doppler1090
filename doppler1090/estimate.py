@@ -18,3 +18,26 @@ def estimate_tone_freq(iq: np.ndarray, fs: float, oversample: int = 8) -> float:
             delta = 0.5 * (a - c) / denom
     df = freqs[1] - freqs[0]
     return float(freqs[k] + delta * df)
+
+
+def estimate_burst_offset(iq, mask, fs):
+    iq = np.asarray(iq)
+    mask = np.asarray(mask)
+    # Extract only the samples where mask is nonzero ("on" chips)
+    non_zero_indices = np.where(mask != 0)[0]
+    extracted_iq = iq[non_zero_indices]
+
+    # Compute effective sample rate based on spacing
+    if len(non_zero_indices) > 0:
+        # If mask is uniform with period P, effective fs is fs/P
+        # For a binary mask, estimate P as average spacing
+        if len(non_zero_indices) > 1:
+            spacings = np.diff(non_zero_indices)
+            avg_spacing = np.mean(spacings)
+        else:
+            avg_spacing = 1.0
+        effective_fs = fs / avg_spacing
+    else:
+        effective_fs = fs
+
+    return estimate_tone_freq(extracted_iq, effective_fs)
