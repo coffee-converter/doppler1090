@@ -42,12 +42,16 @@ function render(state) {
     }
     const label = (a.flight || a.icao);
     if (a.lat != null) {
+      const icon = planeIcon(a.track, isSel);
       if (!entry.marker) {
-        entry.marker = L.circleMarker([a.lat, a.lon])
+        entry.marker = L.marker([a.lat, a.lon], { icon })
           .addTo(map).on('click', () => select(a.icao));
-      } else { entry.marker.setLatLng([a.lat, a.lon]); }
+      } else {
+        entry.marker.setLatLng([a.lat, a.lon]);
+        entry.marker.setIcon(icon);
+      }
+      entry.marker.setZIndexOffset(isSel ? 1000 : 0);
       entry.marker.bindTooltip(label, { permanent: false });
-      styleMarker(entry.marker, isSel);
     }
   }
   // drop aircraft no longer present
@@ -75,12 +79,22 @@ function renderList() {
   }
 }
 
-// Selected aircraft marker is gold and enlarged; others are small and blue.
-function styleMarker(m, sel) {
-  m.setStyle(sel
-    ? { radius: 9, color: '#ffd400', weight: 3, fillColor: '#ffd400', fillOpacity: 0.95 }
-    : { radius: 5, color: '#7fb0ff', weight: 1, fillColor: '#7fb0ff', fillOpacity: 0.7 });
-  if (sel) m.bringToFront();
+// Rotated airplane icon (points along the ground track). White with a dark
+// outline + drop shadow so it stands out over any map tile; gold and enlarged
+// when selected.
+function planeIcon(track, sel) {
+  const size = sel ? 38 : 28;
+  const fill = sel ? '#ffd400' : '#ffffff';
+  const stroke = sel ? '#5a4500' : '#11151c';
+  const rot = track || 0;  // ground track in degrees (0 = north)
+  const svg =
+    `<svg width="${size}" height="${size}" viewBox="0 0 24 24" ` +
+    `style="transform:rotate(${rot}deg);filter:drop-shadow(0 0 2px rgba(0,0,0,0.9))">` +
+    `<path d="M12 2 L13.4 9 L22 13.2 L22 15 L13.4 12.4 L12.9 19 L15.5 20.6 L15.5 22 ` +
+    `L12 21 L8.5 22 L8.5 20.6 L11.1 19 L10.6 12.4 L2 15 L2 13.2 L10.6 9 Z" ` +
+    `fill="${fill}" stroke="${stroke}" stroke-width="1"/></svg>`;
+  return L.divIcon({ html: svg, className: 'plane-icon',
+                     iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
 }
 
 function select(icao) { selected = icao; render(latest); }  // instant re-highlight

@@ -10,3 +10,4 @@ body { display: flex; }
 #list button.sel { background: #2d6cdf; border-color: #2d6cdf; }
 #plot { background: #0c0f14; border: 1px solid #2a3543; margin-top: 8px; }
 #meta { font-size: 13px; margin-top: 8px; white-space: pre; }
+.plane-icon { background: none; border: none; }

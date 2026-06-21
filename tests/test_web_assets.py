@@ -31,6 +31,6 @@ def test_css_exists():
 
 def test_app_js_highlights_selected_aircraft():
     js = _read("app.js")
-    assert "circleMarker" in js            # vector marker we can recolor
-    assert "styleMarker" in js             # selection styling applied to marker
-    assert "bringToFront" in js
+    assert "planeIcon" in js               # rotated airplane icon
+    assert "divIcon" in js                 # built as a Leaflet divIcon
+    assert "setIcon" in js                 # icon updated on selection/heading
