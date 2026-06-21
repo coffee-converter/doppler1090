@@ -64,3 +64,22 @@ def test_parser_web_defaults_off():
     args = p.parse_args(["--lat", "1.0", "--lon", "2.0"])
     assert args.web is False
     assert args.port == 8080
+
+
+def test_parser_max_age_default_and_override():
+    p = build_parser()
+    assert p.parse_args(["--lat", "1.0", "--lon", "2.0"]).max_age == 60.0
+    assert p.parse_args(["--lat", "1.0", "--lon", "2.0", "--max-age", "30"]).max_age == 30.0
+
+
+def test_process_chunk_prunes_stale_aircraft():
+    fs = 2_400_000
+    store = TrackStore(max_age=60.0)
+    # an aircraft heard at t=0
+    store.update_position("OLD123", 0.0, 1.0, 2.0, 10000.0)
+    store._inject("OLD123", 0.0, 100.0, 50.0, 1.0, 2.0, 90.0)
+    assert "OLD123" in store.icaos()
+    # a later chunk with no signal (zeros) at t=100 -> prune runs, drops OLD123
+    iq = np.zeros(4096, dtype=complex)
+    process_chunk(100.0, iq, fs, (42.0, -88.0, 0.0), store, burst_len=300)
+    assert "OLD123" not in store.icaos()

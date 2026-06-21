@@ -25,6 +25,7 @@ def _phase_offsets(n):
 
 def process_chunk(t, iq, fs, rx_llh, store, burst_len, max_fix=1, phase_search=1,
                   threshold=2.0):
+    store.prune(t)  # drop aircraft not heard from within max_age
     mag = magnitude(iq)
     offs = detect_preambles(mag, fs, threshold_factor=threshold)
     if not offs:
@@ -105,6 +106,9 @@ def build_parser():
                         "this (0..1); default 0.25")
     p.add_argument("--show-all", action="store_true",
                    help="show every tracked aircraft regardless of confidence")
+    p.add_argument("--max-age", type=float, default=60.0,
+                   help="drop aircraft not heard from for this many seconds "
+                        "(default 60)")
     p.add_argument("--web", action="store_true",
                    help="serve the browser dashboard instead of the terminal table")
     p.add_argument("--port", type=int, default=8080,
@@ -116,7 +120,7 @@ def main(argv=None):
     args = build_parser().parse_args(argv)
 
     rx_llh = (args.lat, args.lon, args.alt)
-    store = TrackStore()
+    store = TrackStore(max_age=args.max_age)
     burst_len = int(round(BURST_US * args.fs / 1e6)) + 8
     max_fix = 2 if args.aggressive else 1
     min_conf = 0.0 if args.show_all else args.min_confidence

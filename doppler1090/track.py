@@ -29,9 +29,10 @@ class FitResult:
 
 
 class TrackStore:
-    def __init__(self, max_age=300.0):
+    def __init__(self, max_age=60.0):
         self._samples = {}
         self._state = {}
+        self._last_seen = {}  # icao -> timestamp of most recent message
         self.max_age = max_age
         self.lock = threading.Lock()  # held externally around mutation/snapshot
 
@@ -40,6 +41,7 @@ class TrackStore:
 
     def update_position(self, icao, t, lat, lon, alt):
         self._st(icao).update(lat=lat, lon=lon, alt=alt, t=t)
+        self._last_seen[icao] = t
 
     def update_velocity(self, icao, t, speed_kt, track_deg, vrate_fpm):
         self._st(icao).update(
@@ -50,6 +52,7 @@ class TrackStore:
             vrate_fpm=vrate_fpm,
             t=t,
         )
+        self._last_seen[icao] = t
 
     def update_callsign(self, icao, flight):
         self._st(icao)["flight"] = flight
@@ -60,6 +63,15 @@ class TrackStore:
     def _inject(self, icao, t, f_offset, doppler_pred, lat, lon, track):
         self._samples.setdefault(icao, []).append(
             Sample(t, f_offset, doppler_pred, lat, lon, track))
+        self._last_seen[icao] = t
+
+    def prune(self, now):
+        """Drop aircraft not heard from in more than max_age seconds."""
+        cutoff = now - self.max_age
+        for icao in [ic for ic, ts in self._last_seen.items() if ts < cutoff]:
+            self._samples.pop(icao, None)
+            self._state.pop(icao, None)
+            self._last_seen.pop(icao, None)
 
     def add_burst(self, icao, t, f_offset, rx_llh):
         s = self._state.get(icao, {})

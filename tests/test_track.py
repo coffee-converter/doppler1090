@@ -139,3 +139,28 @@ def test_trackstore_has_lock():
     with store.lock:
         store.update_callsign("abc", "X")
     assert store.latest("abc")["flight"] == "X"
+
+
+def test_prune_removes_stale_aircraft():
+    store = TrackStore(max_age=60.0)
+    # "old" last heard at t=10; "fresh" last heard at t=100
+    store.update_position("old", 10.0, 1.0, 2.0, 10000.0)
+    store.update_velocity("old", 10.0, 400.0, 90.0, 0.0)
+    store._inject("old", 10.0, 100.0, 50.0, 1.0, 2.0, 90.0)
+    store.update_position("fresh", 100.0, 1.0, 2.0, 10000.0)
+    store._inject("fresh", 100.0, 100.0, 50.0, 1.0, 2.0, 90.0)
+    # now = 100: "old" (heard at 10) is 90s stale > 60s; "fresh" is current
+    store.prune(100.0)
+    assert "old" not in store.icaos()
+    assert "old" not in store.latest("old")  # state cleared too -> empty dict
+    assert store.latest("old") == {}
+    assert "fresh" in store.icaos()
+    assert store.latest("fresh")["lat"] == 1.0
+
+
+def test_prune_keeps_recent_within_max_age():
+    store = TrackStore(max_age=60.0)
+    store.update_position("a", 50.0, 1.0, 2.0, 10000.0)
+    store._inject("a", 50.0, 100.0, 50.0, 1.0, 2.0, 90.0)
+    store.prune(100.0)  # heard at 50, now 100 -> 50s <= 60s, keep
+    assert "a" in store.icaos()
