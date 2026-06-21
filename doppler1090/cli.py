@@ -101,9 +101,11 @@ def build_parser():
     p.add_argument("--threshold", type=float, default=2.0,
                    help="preamble detection threshold (lower = more sensitive, "
                         "more CPU; 2.0 recovers ~70%% more frames than 3.0)")
-    p.add_argument("--min-confidence", type=float, default=0.25,
+    p.add_argument("--min-confidence", type=float, default=0.0,
                    help="hide aircraft whose Doppler-fit confidence is below "
-                        "this (0..1); default 0.25")
+                        "this (0..1); default 0 (show all decoded aircraft, "
+                        "dump1090-style). Raise it to surface only trustworthy "
+                        "Doppler tracks.")
     p.add_argument("--show-all", action="store_true",
                    help="show every tracked aircraft regardless of confidence")
     p.add_argument("--max-age", type=float, default=60.0,

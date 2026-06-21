@@ -83,3 +83,11 @@ def test_process_chunk_prunes_stale_aircraft():
     iq = np.zeros(4096, dtype=complex)
     process_chunk(100.0, iq, fs, (42.0, -88.0, 0.0), store, burst_len=300)
     assert "OLD123" not in store.icaos()
+
+
+def test_min_confidence_defaults_to_zero_show_all():
+    p = build_parser()
+    args = p.parse_args(["--lat", "1.0", "--lon", "2.0"])
+    assert args.min_confidence == 0.0          # default shows all decoded aircraft
+    args2 = p.parse_args(["--lat", "1.0", "--lon", "2.0", "--min-confidence", "0.3"])
+    assert args2.min_confidence == 0.3         # still tunable to filter
