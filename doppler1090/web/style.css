@@ -1,0 +1,12 @@
+html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; }
+body { display: flex; }
+#map { flex: 1 1 70%; height: 100vh; }
+#panel { flex: 0 0 30%; max-width: 460px; padding: 12px; overflow-y: auto;
+         background: #11151c; color: #e6e6e6; box-sizing: border-box; }
+#panel h2 { margin: 0 0 8px; font-size: 16px; }
+#list button { display: block; width: 100%; text-align: left; margin: 2px 0;
+               padding: 6px 8px; background: #1d2530; color: #e6e6e6;
+               border: 1px solid #2a3543; border-radius: 4px; cursor: pointer; }
+#list button.sel { background: #2d6cdf; border-color: #2d6cdf; }
+#plot { background: #0c0f14; border: 1px solid #2a3543; margin-top: 8px; }
+#meta { font-size: 13px; margin-top: 8px; white-space: pre; }
