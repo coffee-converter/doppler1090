@@ -33,19 +33,21 @@ function render(state) {
     // ground track: one colored segment per consecutive sample pair
     entry.tracks.forEach(l => map.removeLayer(l));
     entry.tracks = [];
+    const isSel = a.icao === selected;
     const g = a.ground_track;
     for (let i = 1; i < g.length; i++) {
       const seg = L.polyline([[g[i-1][0], g[i-1][1]], [g[i][0], g[i][1]]],
-        { color: dopColor(g[i][2]), weight: 4, opacity: 0.9 });
+        { color: dopColor(g[i][2]), weight: isSel ? 7 : 4, opacity: 0.9 });
       seg.addTo(map); entry.tracks.push(seg);
     }
-    const pos = [a.lat, a.lon];
     const label = (a.flight || a.icao);
     if (a.lat != null) {
       if (!entry.marker) {
-        entry.marker = L.marker(pos).addTo(map).on('click', () => select(a.icao));
-      } else { entry.marker.setLatLng(pos); }
+        entry.marker = L.circleMarker([a.lat, a.lon])
+          .addTo(map).on('click', () => select(a.icao));
+      } else { entry.marker.setLatLng([a.lat, a.lon]); }
       entry.marker.bindTooltip(label, { permanent: false });
+      styleMarker(entry.marker, isSel);
     }
   }
   // drop aircraft no longer present
@@ -73,7 +75,15 @@ function renderList() {
   }
 }
 
-function select(icao) { selected = icao; renderList(); drawPlot(); }
+// Selected aircraft marker is gold and enlarged; others are small and blue.
+function styleMarker(m, sel) {
+  m.setStyle(sel
+    ? { radius: 9, color: '#ffd400', weight: 3, fillColor: '#ffd400', fillOpacity: 0.95 }
+    : { radius: 5, color: '#7fb0ff', weight: 1, fillColor: '#7fb0ff', fillOpacity: 0.7 });
+  if (sel) m.bringToFront();
+}
+
+function select(icao) { selected = icao; render(latest); }  // instant re-highlight
 
 function drawPlot() {
   const c = document.getElementById('plot');

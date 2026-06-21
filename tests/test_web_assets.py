@@ -27,3 +27,10 @@ def test_app_js_polls_state_and_has_color_logic():
 
 def test_css_exists():
     assert "#map" in _read("style.css")
+
+
+def test_app_js_highlights_selected_aircraft():
+    js = _read("app.js")
+    assert "circleMarker" in js            # vector marker we can recolor
+    assert "styleMarker" in js             # selection styling applied to marker
+    assert "bringToFront" in js
