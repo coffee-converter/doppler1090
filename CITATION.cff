@@ -1,0 +1,21 @@
+cff-version: 1.2.0
+message: "If you reference this project, please cite it as below."
+title: "doppler1090"
+abstract: >-
+  A passive aircraft Doppler tracker for RTL-SDR. It measures the Doppler shift
+  of ADS-B aircraft on 1090 MHz and compares the measured track against the
+  shift predicted from each aircraft's own reported position and velocity.
+type: software
+authors:
+  - given-names: Aaron
+    family-names: Hanson
+    orcid: "https://orcid.org/0009-0000-8432-3816"
+repository-code: "https://github.com/coffee-converter/doppler1090"
+license: GPL-3.0
+keywords:
+  - rtl-sdr
+  - software-defined-radio
+  - ads-b
+  - mode-s
+  - doppler
+  - digital-signal-processing
