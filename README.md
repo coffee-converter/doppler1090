@@ -82,3 +82,7 @@ The name follows the lineage of [`dump1090`](https://github.com/antirez/dump1090
 reimplements a few of dump1090's ideas (CRC-syndrome error correction, framing constants)
 from scratch, and shares design and algorithms with it, not source code. The Mode S
 decoding itself is delegated to `pyModeS`.
+
+---
+
+Built by [Aaron Hanson](https://aaronhanson.dev).
