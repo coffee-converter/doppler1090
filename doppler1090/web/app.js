@@ -1,12 +1,15 @@
 const map = L.map('map').setView([41.88, -87.63], 10);   // Chicago; recenters on the receiver once state loads
 const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-  { maxZoom: 19, attribution: '© OpenStreetMap' });
+  { maxZoom: 19, detectRetina: true, attribution: '© OpenStreetMap' });
 // FAA aeronautical charts — the same public-domain raster charts SkyVector
 // uses, pre-tiled in Web Mercator and served from the FAA's own ArcGIS Online.
 // {z}/{y}/{x} (ArcGIS tile order). US coverage only; blank outside CONUS/AK/HI.
+// detectRetina pulls the next zoom level on HiDPI screens and packs it at 2x
+// density — supersampling that keeps the fine chart linework crisp instead of
+// aliased when the tiles would otherwise be scaled up.
 const faaChart = name => L.tileLayer(
   `https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/${name}/MapServer/tile/{z}/{y}/{x}`,
-  { maxZoom: 19, opacity: 0.4, attribution: 'Aeronautical charts: FAA' });
+  { maxZoom: 19, opacity: 0.4, detectRetina: true, attribution: 'Aeronautical charts: FAA' });
 const baseLayers = {
   'VFR Sectional': faaChart('VFR_Sectional'),
   'VFR Terminal': faaChart('VFR_Terminal'),
