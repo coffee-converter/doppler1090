@@ -5,6 +5,9 @@ ADS-B aircraft on 1090 MHz and plots the *measured* frequency track against the 
 *predicted* from each aircraft's own reported position and velocity - measured vs.
 physics, side by side, on the same screen.
 
+![doppler1090 dashboard: live aircraft on an FAA sectional chart, with a
+measured-vs-predicted Doppler plot for the selected flight](docs/dashboard.jpg)
+
 ## The idea
 
 ADS-B is transmitted on a nominal 1090 MHz carrier, so a real Doppler shift is
@@ -46,15 +49,35 @@ A straight pipeline from raw IQ to a measured-vs-predicted comparison:
 The whole thing is vectorized with NumPy - candidate bursts are demodulated as one
 `(N, 112)` matrix rather than a Python call per burst - so it keeps up with a live stream.
 
+## Dashboard
+
+`doppler1090 --web` serves a local browser dashboard (a `rich` terminal table is the
+default). It has two linked halves:
+
+- **Map.** Live aircraft over **FAA aeronautical charts** - the same public-domain VFR
+  sectionals SkyVector uses, served straight from the FAA's tile service, with a layer
+  switcher for VFR Sectional/Terminal and IFR Low/High (or plain OpenStreetMap for
+  outside US coverage). Each aircraft is a heading-aligned icon; its ground track is
+  drawn one segment at a time and **colored by Doppler sign** - blue approaching, through
+  white at closest approach, to red receding. The receiver location is marked in gold.
+- **Detail panel.** Click an aircraft to plot its **measured vs. predicted** Doppler over
+  the whole pass (blue points = measured per-burst offset, green line = the curve
+  predicted from its ADS-B state vector), above a readout of the fit stats - correlation,
+  confidence, burst count - and its range, altitude, speed, and track.
+
 ## Install & run
 
 Requires Python 3.11+ and an **RTL-SDR Blog v4** dongle (its ~1 ppm TCXO is stable enough
 over a single pass for the differential method above) with an antenna for 1090 MHz.
 
+The receiver's location is required - it's the reference point the predicted Doppler is
+computed against - so pass your antenna's latitude and longitude:
+
 ```sh
 pip install -e .
 doppler1090 --help
-doppler1090          # live capture; measured vs. predicted Doppler per aircraft
+doppler1090 --lat 41.88 --lon -87.63            # live rich terminal table
+doppler1090 --lat 41.88 --lon -87.63 --web      # + browser dashboard (default :8080)
 ```
 
 ## Tests
@@ -69,7 +92,9 @@ correct, geometry, track, terminal, server, CLI, and web assets.
 ## Built with
 
 Python · NumPy · SciPy · [pyModeS](https://github.com/junzis/pyModeS) (Mode S decoding) ·
-[pyrtlsdr](https://github.com/pyrtlsdr/pyrtlsdr) (RTL-SDR capture) · `rich` (terminal UI)
+[pyrtlsdr](https://github.com/pyrtlsdr/pyrtlsdr) (RTL-SDR capture) · `rich` (terminal UI) ·
+[Leaflet](https://leafletjs.com) with [FAA aeronautical charts](https://www.faa.gov/air_traffic/flight_info/aeronav/)
+and [OpenStreetMap](https://www.openstreetmap.org/copyright) tiles (web map)
 
 ## License & acknowledgments
 
