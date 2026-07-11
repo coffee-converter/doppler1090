@@ -27,9 +27,29 @@ baseLayers['VFR Sectional'].addTo(map);
 L.control.layers(baseLayers, {}, { position: 'topright' }).addTo(map);
 
 let receiverMarker = null;
-let layers = {};        // icao -> { marker, tracks: [polyline,...] }
+// icao -> { marker, tracks:[polyline], data:lastAircraftObj, ghostSince:ms|null }
+let layers = {};
 let selected = null;
 let latest = { aircraft: [] };
+
+// Aircraft that stop transmitting linger as fading "ghosts" so their track and
+// last reading stay on the map, then drop after this window. (The backend has
+// already pruned them from /api/state by the time they ghost here.)
+const GHOST_TTL_MS = 5 * 60 * 1000;
+// Ghost opacity ramps from 0.5 (just went silent) down to 0.12 (about to drop).
+function ghostFade(ageMs) {
+  return 0.5 - 0.38 * Math.min(1, ageMs / GHOST_TTL_MS);
+}
+
+// Selected aircraft resolved against live state first, then the ghost cache.
+// Returns { a, ghostSince } or null; ghostSince is null for a live aircraft.
+function findAircraft(icao) {
+  const live = latest.aircraft.find(x => x.icao === icao);
+  if (live) return { a: live, ghostSince: null };
+  const e = layers[icao];
+  if (e && e.data && e.ghostSince != null) return { a: e.data, ghostSince: e.ghostSince };
+  return null;
+}
 
 // Doppler (Hz) -> diverging color. + = approaching = blue, - = receding = red, 0 = white.
 function dopColor(hz) {
@@ -50,11 +70,14 @@ function render(state) {
       .addTo(map).bindTooltip('receiver');
     map.setView([state.receiver.lat, state.receiver.lon], map.getZoom());  // snap off the placeholder to the real receiver
   }
+  const now = Date.now();
   const seen = new Set();
   for (const a of state.aircraft) {
     seen.add(a.icao);
     let entry = layers[a.icao];
     if (!entry) { entry = { marker: null, tracks: [] }; layers[a.icao] = entry; }
+    entry.data = a;          // cache last-known reading (used once it ghosts)
+    entry.ghostSince = null; // live now (revives it if it had been a ghost)
     // ground track: one colored segment per consecutive sample pair
     entry.tracks.forEach(l => map.removeLayer(l));
     entry.tracks = [];
@@ -67,7 +90,7 @@ function render(state) {
     }
     const label = (a.flight || a.icao);
     if (a.lat != null) {
-      const icon = planeIcon(a.track, isSel);
+      const icon = planeIcon(a.track, isSel, false);
       if (!entry.marker) {
         entry.marker = L.marker([a.lat, a.lon], { icon })
           .addTo(map).on('click', () => select(a.icao));
@@ -75,17 +98,30 @@ function render(state) {
         entry.marker.setLatLng([a.lat, a.lon]);
         entry.marker.setIcon(icon);
       }
+      entry.marker.setOpacity(1);
       entry.marker.setZIndexOffset(isSel ? 1000 : 0);
       entry.marker.bindTooltip(label, { permanent: false });
     }
   }
-  // drop aircraft no longer present
+  // aircraft absent from this snapshot linger as fading ghosts, then drop
   for (const icao of Object.keys(layers)) {
-    if (!seen.has(icao)) {
-      const e = layers[icao];
+    if (seen.has(icao)) continue;
+    const e = layers[icao];
+    if (e.ghostSince == null) e.ghostSince = now;   // freeze at first miss
+    const age = now - e.ghostSince;
+    if (age > GHOST_TTL_MS) {                        // expired: remove entirely
       if (e.marker) map.removeLayer(e.marker);
       e.tracks.forEach(l => map.removeLayer(l));
       delete layers[icao];
+      continue;
+    }
+    const isSel = icao === selected;
+    const op = ghostFade(age);                       // dim; keep Doppler colors
+    e.tracks.forEach(l => l.setStyle({ opacity: op, weight: isSel ? 5 : 3 }));
+    if (e.marker) {
+      e.marker.setIcon(planeIcon(e.data ? e.data.track : 0, isSel, true));
+      e.marker.setOpacity(Math.max(op, 0.25));
+      e.marker.setZIndexOffset(isSel ? 1000 : 0);
     }
   }
   renderList();
@@ -95,10 +131,21 @@ function render(state) {
 function renderList() {
   const div = document.getElementById('list');
   div.innerHTML = '';
-  for (const a of latest.aircraft) {
+  // live aircraft first, then any lingering ghosts (dimmed)
+  const rows = latest.aircraft.map(a => ({ a, ghost: false }));
+  const live = new Set(latest.aircraft.map(a => a.icao));
+  for (const icao of Object.keys(layers)) {
+    const e = layers[icao];
+    if (!live.has(icao) && e.ghostSince != null && e.data)
+      rows.push({ a: e.data, ghost: true });
+  }
+  for (const { a, ghost } of rows) {
     const b = document.createElement('button');
     b.textContent = `${(a.flight || a.icao)}  conf ${a.conf}  scale ${a.scale}`;
-    if (a.icao === selected) b.className = 'sel';
+    const cls = [];
+    if (a.icao === selected) cls.push('sel');
+    if (ghost) cls.push('ghost');
+    b.className = cls.join(' ');
     b.onclick = () => select(a.icao);
     div.appendChild(b);
   }
@@ -107,10 +154,10 @@ function renderList() {
 // Rotated airplane icon (points along the ground track). White with a dark
 // outline + drop shadow so it stands out over any map tile; gold and enlarged
 // when selected.
-function planeIcon(track, sel) {
+function planeIcon(track, sel, ghost) {
   const size = sel ? 38 : 28;
-  const fill = sel ? '#ffd400' : '#ffffff';
-  const stroke = sel ? '#5a4500' : '#11151c';
+  const fill = ghost ? '#9aa6b5' : sel ? '#ffd400' : '#ffffff';
+  const stroke = ghost ? '#2a3340' : sel ? '#5a4500' : '#11151c';
   const rot = track || 0;  // ground track in degrees (0 = north)
   const svg =
     `<svg width="${size}" height="${size}" viewBox="0 0 24 24" ` +
@@ -159,14 +206,15 @@ function drawPlot() {
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, W, H);
 
-  const a = latest.aircraft.find(x => x.icao === selected);
+  const found = findAircraft(selected);
   const meta = document.getElementById('meta');
-  if (!a) {
+  if (!found) {
     ctx.fillStyle = COL.ink; ctx.font = '13px system-ui, sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('select an aircraft', W / 2, H / 2);
     meta.replaceChildren(el('div', 'placeholder', 'select an aircraft')); return;
   }
+  const a = found.a;
   const pts = a.doppler;
   const ts = pts.map(p => p.t), ms = pts.map(p => p.measured), ps = pts.map(p => p.predicted);
   const tmin = Math.min(...ts), tmax = Math.max(...ts);
@@ -239,7 +287,7 @@ function drawPlot() {
     ctx.fillText(label, lx + 14, y);
   });
 
-  renderMeta(meta, a);
+  renderMeta(meta, a, found.ghostSince);
 }
 
 // Small DOM helper: create <tag class=cls> with optional text content.
@@ -252,7 +300,7 @@ function el(tag, cls, text) {
 
 // Structured stat block below the chart (built with safe DOM APIs, not
 // innerHTML — the callsign is attacker-influenceable ADS-B text).
-function renderMeta(meta, a) {
+function renderMeta(meta, a, ghostSince) {
   const trk = a.track != null ? Math.round(a.track) + '°' : '-';
   const range_mi = a.range_km != null ? (a.range_km * 0.621371).toFixed(1) : '-';
   const stats = [
@@ -273,6 +321,10 @@ function renderMeta(meta, a) {
   const head = el('div', 'callsign', a.flight || a.icao);
   const frag = [head];
   if (a.flight) frag.push(el('div', 'sub', a.icao));   // show hex id when a callsign exists
+  if (ghostSince) {                                    // stale ghost: note how long silent
+    const secs = Math.round((Date.now() - ghostSince) / 1000);
+    frag.push(el('div', 'stale', `stale · last heard ${secs}s ago`));
+  }
   frag.push(grid);
   meta.replaceChildren(...frag);
 }

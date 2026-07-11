@@ -60,6 +60,8 @@ default). It has two linked halves:
   outside US coverage). Each aircraft is a heading-aligned icon; its ground track is
   drawn one segment at a time and **colored by Doppler sign** - blue approaching, through
   white at closest approach, to red receding. The receiver location is marked in gold.
+  When an aircraft stops transmitting it lingers as a fading grey "ghost" - track and
+  last reading intact - for a few minutes before dropping off, so recent passes stay in view.
 - **Detail panel.** Click an aircraft to plot its **measured vs. predicted** Doppler over
   the whole pass (blue points = measured per-burst offset, green line = the curve
   predicted from its ADS-B state vector), above a readout of the fit stats - correlation,
