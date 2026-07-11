@@ -133,7 +133,7 @@ function niceTicks(min, max, count) {
 
 // Chart palette (dark surface #0c0f14)
 const COL = {
-  grid: '#1a2331', axis: '#38445a', ink: '#8b97a8',
+  grid: '#1a2331', axis: '#38445a', zero: '#6b7c94', ink: '#8b97a8',
   measured: '#7fb0ff', predicted: '#54c07a',
 };
 
@@ -191,10 +191,12 @@ function drawPlot() {
     ctx.moveTo(x, padT); ctx.lineTo(x, H - padB); ctx.stroke();
     ctx.fillStyle = COL.ink; ctx.fillText(v.toFixed(xDec), sx(v), H - padB + 8);
   }
-  // zero line (brighter than the grid)
+  // zero line (the Doppler sign-flip / closest-approach reference — kept
+  // clearly brighter and thicker than the grid)
   const yz = Math.round(sy(0)) + 0.5;
-  ctx.strokeStyle = COL.axis; ctx.beginPath();
+  ctx.strokeStyle = COL.zero; ctx.lineWidth = 1.5; ctx.beginPath();
   ctx.moveTo(padL, yz); ctx.lineTo(W - padR, yz); ctx.stroke();
+  ctx.lineWidth = 1;
 
   // axis titles
   ctx.fillStyle = COL.ink; ctx.font = '11px system-ui, sans-serif';
