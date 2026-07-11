@@ -1,4 +1,9 @@
-const map = L.map('map').setView([41.88, -87.63], 10);   // Chicago; recenters on the receiver once state loads
+// Zoom locked to the range the FAA sectional cache actually covers (native
+// tiles exist z8-z12; outside that the service 404s and tiles vanish). Max is
+// 11 because detectRetina pulls one level deeper, so map-zoom 11 already shows
+// the real z12 tiles.
+const map = L.map('map', { minZoom: 7, maxZoom: 11 })
+  .setView([41.88, -87.63], 10);   // Chicago; recenters on the receiver once state loads
 const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
   { maxZoom: 19, detectRetina: true, attribution: '© OpenStreetMap' });
 // FAA aeronautical charts — the same public-domain raster charts SkyVector
@@ -9,7 +14,8 @@ const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
 // aliased when the tiles would otherwise be scaled up.
 const faaChart = name => L.tileLayer(
   `https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/${name}/MapServer/tile/{z}/{y}/{x}`,
-  { maxZoom: 19, opacity: 0.4, detectRetina: true, attribution: 'Aeronautical charts: FAA' });
+  { maxZoom: 12, minNativeZoom: 8, maxNativeZoom: 12, opacity: 0.4,
+    detectRetina: true, attribution: 'Aeronautical charts: FAA' });
 const baseLayers = {
   'VFR Sectional': faaChart('VFR_Sectional'),
   'VFR Terminal': faaChart('VFR_Terminal'),
@@ -249,12 +255,11 @@ function el(tag, cls, text) {
 function renderMeta(meta, a) {
   const trk = a.track != null ? Math.round(a.track) + '°' : '-';
   const range_mi = a.range_km != null ? (a.range_km * 0.621371).toFixed(1) : '-';
-  const spd_mph = a.speed_kt != null ? Math.round(a.speed_kt * 1.150779) : '-';
   const stats = [
     ['scale', a.scale], ['corr', a.corr], ['conf', a.conf], ['bursts', a.bursts],
     ['range', range_mi, a.range_km != null ? 'mi' : ''],
     ['alt', a.alt ?? '-', a.alt != null ? 'ft' : ''],
-    ['spd', spd_mph, a.speed_kt != null ? 'mph' : ''], ['trk', trk],
+    ['spd', a.speed_kt ?? '-', a.speed_kt != null ? 'kt' : ''], ['trk', trk],
   ];
   const grid = el('div', 'stats');
   for (const [k, v, u] of stats) {
