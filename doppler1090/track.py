@@ -29,11 +29,12 @@ class FitResult:
 
 
 class TrackStore:
-    def __init__(self, max_age=60.0):
+    def __init__(self, max_age=60.0, recorder=None):
         self._samples = {}
         self._state = {}
         self._last_seen = {}  # icao -> timestamp of most recent message
         self.max_age = max_age
+        self.recorder = recorder  # optional history.Recorder; mirrors every event
         self.lock = threading.Lock()  # held externally around mutation/snapshot
 
     def _st(self, icao):
@@ -42,6 +43,8 @@ class TrackStore:
     def update_position(self, icao, t, lat, lon, alt):
         self._st(icao).update(lat=lat, lon=lon, alt=alt, t=t)
         self._last_seen[icao] = t
+        if self.recorder:
+            self.recorder.log_state(t, icao, lat=lat, lon=lon, alt=alt)
 
     def update_velocity(self, icao, t, speed_kt, track_deg, vrate_fpm):
         self._st(icao).update(
@@ -53,9 +56,16 @@ class TrackStore:
             t=t,
         )
         self._last_seen[icao] = t
+        if self.recorder:
+            self.recorder.log_state(t, icao, speed_kt=speed_kt,
+                                    track=track_deg, vrate_fpm=vrate_fpm)
 
-    def update_callsign(self, icao, flight):
+    def update_callsign(self, icao, flight, t=None):
         self._st(icao)["flight"] = flight
+        if t is not None:
+            self._last_seen[icao] = t
+            if self.recorder:
+                self.recorder.log_state(t, icao, flight=flight)
 
     def latest(self, icao):
         return dict(self._state.get(icao, {}))
@@ -64,6 +74,9 @@ class TrackStore:
         self._samples.setdefault(icao, []).append(
             Sample(t, f_offset, doppler_pred, lat, lon, track))
         self._last_seen[icao] = t
+        if self.recorder:
+            self.recorder.log_burst(t, icao, f_offset, doppler_pred,
+                                    lat, lon, track)
 
     def prune(self, now):
         """Drop aircraft not heard from in more than max_age seconds."""

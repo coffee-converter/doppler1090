@@ -1,14 +1,19 @@
 import json
 import os
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
 
 import numpy as np
 from .geometry import geodetic_to_ecef
 from .terminal import confidence
 
 
-def build_snapshot(store, rx_llh, min_conf=0.0):
-    """Build the JSON-serializable dashboard state. Caller holds store.lock."""
+def build_snapshot(store, rx_llh, min_conf=0.0, at=None, server_time=None):
+    """Build the JSON-serializable dashboard state. Caller holds store.lock.
+
+    ``at`` is the epoch the frame represents (None => live). ``server_time`` is
+    the current epoch, so the client can tell how far behind live it is."""
     rx = geodetic_to_ecef(*rx_llh)
     fits = store.joint_fit()
     aircraft = []
@@ -51,6 +56,8 @@ def build_snapshot(store, rx_llh, min_conf=0.0):
     return {
         "receiver": {"lat": _f(rx_llh[0]), "lon": _f(rx_llh[1]), "alt": _f(rx_llh[2])},
         "aircraft": aircraft,
+        "at": _f(at),
+        "server_time": float(server_time if server_time is not None else time.time()),
     }
 
 
@@ -63,18 +70,42 @@ _CTYPES = {"html": "text/html", "js": "application/javascript",
            "css": "text/css", "json": "application/json"}
 
 
-def _make_handler(store, rx_llh, lock, min_conf):
+def _make_handler(store, rx_llh, lock, min_conf, history):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass  # silence per-request logging
 
         def do_GET(self):
-            if self.path.split("?", 1)[0] == "/api/state":
-                with lock:
-                    body = json.dumps(build_snapshot(store, rx_llh, min_conf)).encode()
-                self._send(200, "application/json", body)
+            route = urlparse(self.path)
+            if route.path == "/api/state":
+                self._state(parse_qs(route.query))
+            elif route.path == "/api/timeline":
+                self._timeline()
             else:
                 self._static()
+
+        def _state(self, query):
+            at = query.get("at", [None])[0]
+            # A past frame is reconstructed off-lock from the recorded file;
+            # only the live frame touches the shared store.
+            if at is not None and history is not None:
+                at = float(at)
+                past = history.reconstruct(at)
+                body = json.dumps(build_snapshot(past, rx_llh, min_conf,
+                                                 at=at)).encode()
+            else:
+                with lock:
+                    body = json.dumps(build_snapshot(store, rx_llh, min_conf)).encode()
+            self._send(200, "application/json", body)
+
+        def _timeline(self):
+            if history is None:
+                data = {"start": None, "end": None, "buckets": [],
+                        "recording": False}
+            else:
+                data = history.timeline()
+                data["recording"] = True
+            self._send(200, "application/json", json.dumps(data).encode())
 
         def _static(self):
             clean = self.path.split("?", 1)[0]
@@ -98,13 +129,14 @@ def _make_handler(store, rx_llh, lock, min_conf):
     return Handler
 
 
-def make_server(store, rx_llh, lock, min_conf, port=0):
+def make_server(store, rx_llh, lock, min_conf, port=0, history=None):
     return ThreadingHTTPServer(("127.0.0.1", port),
-                               _make_handler(store, rx_llh, lock, min_conf))
+                               _make_handler(store, rx_llh, lock, min_conf,
+                                             history))
 
 
-def serve(store, rx_llh, lock, min_conf, port, open_browser=False):
-    httpd = make_server(store, rx_llh, lock, min_conf, port)
+def serve(store, rx_llh, lock, min_conf, port, open_browser=False, history=None):
+    httpd = make_server(store, rx_llh, lock, min_conf, port, history=history)
     actual = httpd.server_address[1]
     if open_browser:
         import webbrowser

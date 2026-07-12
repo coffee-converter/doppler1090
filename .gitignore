@@ -3,3 +3,7 @@ __pycache__/
 *.egg-info/
 *.pyc
 .pytest_cache/
+doppler1090-data/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
