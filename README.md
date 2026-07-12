@@ -5,8 +5,9 @@ ADS-B aircraft on 1090 MHz and plots the *measured* frequency track against the 
 *predicted* from each aircraft's own reported position and velocity - measured vs.
 physics, side by side, on the same screen.
 
-![doppler1090 dashboard: live aircraft on an FAA sectional chart, with a
-measured-vs-predicted Doppler plot for the selected flight](docs/dashboard.jpg)
+![doppler1090 dashboard: live aircraft on an FAA sectional chart, a
+measured-vs-predicted Doppler plot for the selected flight, and a session
+time-travel scrubber](docs/dashboard.jpg)
 
 ## The idea
 
@@ -44,7 +45,8 @@ A straight pipeline from raw IQ to a measured-vs-predicted comparison:
 | Estimate | `estimate.py` | Per-burst carrier-frequency offset from the recovered phase. |
 | Predict | `geometry.py` | Predicted Doppler from the aircraft's ADS-B position/velocity and the receiver location (ECEF geometry). |
 | Track | `track.py` | Accumulates per-aircraft offset tracks over a pass and template-fits them against the predicted curve, with a pass-quality score that surfaces the clean straight-line passes where the measurement is trustworthy. |
-| Display | `terminal.py`, `server.py`, `web/` | A live `rich` terminal table, plus a browser dashboard served locally. |
+| Record | `history.py` | Appends every decoded state message and Doppler burst to a per-session SQLite log, and reconstructs the full state as of any past instant for the dashboard's time slider. |
+| Display | `terminal.py`, `server.py`, `web/` | A live `rich` terminal table, plus a browser dashboard with a time-travel scrubber, served locally. |
 
 The whole thing is vectorized with NumPy - candidate bursts are demodulated as one
 `(N, 112)` matrix rather than a Python call per burst - so it keeps up with a live stream.
@@ -52,20 +54,28 @@ The whole thing is vectorized with NumPy - candidate bursts are demodulated as o
 ## Dashboard
 
 `doppler1090 --web` serves a local browser dashboard (a `rich` terminal table is the
-default). It has two linked halves:
+default). The map is a fullscreen "scope"; a left panel and a bottom scrubber float over it.
 
 - **Map.** Live aircraft over **FAA aeronautical charts** - the same public-domain VFR
   sectionals SkyVector uses, served straight from the FAA's tile service, with a layer
-  switcher for VFR Sectional/Terminal and IFR Low/High (or plain OpenStreetMap for
-  outside US coverage). Each aircraft is a heading-aligned icon; its ground track is
-  drawn one segment at a time and **colored by Doppler sign** - blue approaching, through
-  white at closest approach, to red receding. The receiver location is marked in gold.
-  When an aircraft stops transmitting it lingers as a fading grey "ghost" - track and
-  last reading intact - for a few minutes before dropping off, so recent passes stay in view.
-- **Detail panel.** Click an aircraft to plot its **measured vs. predicted** Doppler over
-  the whole pass (blue points = measured per-burst offset, green line = the curve
-  predicted from its ADS-B state vector), above a readout of the fit stats - correlation,
-  confidence, burst count - and its range, altitude, speed, and track.
+  switcher for the VFR Sectional, an auto **IFR** enroute chart (high-altitude when zoomed
+  out, low-altitude when zoomed in), or plain OpenStreetMap for outside US coverage. Each
+  aircraft is a heading-aligned icon; its ground track is drawn one segment at a time and
+  **colored by Doppler sign** - blue approaching, through white at closest approach, to red
+  receding. The receiver is marked in gold with concentric range rings, and the selected
+  aircraft gets a line-of-sight and a marker at its closest-approach (zero-Doppler) point.
+  When an aircraft stops transmitting it lingers as a fading grey "ghost" for a few minutes
+  before dropping off, so recent passes stay in view.
+- **Left panel.** A status header (receiver, uptime, aircraft count, decode rate) over a
+  list of aircraft cards - callsign, fit confidence, and a Doppler sparkline - in stable
+  first-seen order. Silent aircraft collapse to compact pills; click one to expand it.
+  Selecting an aircraft plots its **measured vs. predicted** Doppler over the whole pass
+  (blue points = measured per-burst offset, green line = the curve predicted from its ADS-B
+  state vector, with 0 Hz centered), above its fit stats - correlation, confidence, burst
+  count - and its range, altitude, speed, and track.
+- **Time travel.** Every session is recorded, so the bottom scrubber can replay it: drag
+  the playhead or hit play to animate past aircraft tracks over an activity-density strip,
+  then jump back to **LIVE**. Capture keeps running and recording the whole time you scrub.
 
 ## Install & run
 
@@ -81,6 +91,10 @@ doppler1090 --help
 doppler1090 --lat 41.88 --lon -87.63            # live rich terminal table
 doppler1090 --lat 41.88 --lon -87.63 --web      # + browser dashboard (default :8080)
 ```
+
+Each run is recorded to `./doppler1090-data/` (one SQLite file per session) so the
+dashboard's time slider can replay it; pass `--no-record` to disable or `--data-dir` to
+put the logs elsewhere.
 
 ## Tests
 
