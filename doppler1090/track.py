@@ -5,7 +5,11 @@ from .geometry import radial_velocity, predicted_doppler
 
 KT_TO_MPS = 0.514444
 FPM_TO_MPS = 0.00508
-MIN_BURSTS = 8
+# Bursts needed before an aircraft gets a fit and becomes visible. Kept low so
+# aircraft appear quickly (~a few seconds after a velocity message arrives); the
+# fit only solves 3 params, so 5 points is already overdetermined. Early fits
+# just carry low confidence, which the UI shows honestly.
+MIN_BURSTS = 5
 
 
 @dataclass
