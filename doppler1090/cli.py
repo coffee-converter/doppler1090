@@ -12,6 +12,7 @@ from .estimate import estimate_burst_offset
 from .decode import _chip_indices, bits_to_hex
 from .track import TrackStore
 from .history import Recorder, History
+from . import aircraft
 from .terminal import build_rows, build_table
 from . import server
 
@@ -124,6 +125,12 @@ def build_parser():
     p.add_argument("--no-record", action="store_true",
                    help="do not persist the session; disables the web "
                         "dashboard's time-travel scrubber")
+    p.add_argument("--no-lookup", action="store_true",
+                   help="do not look up aircraft make/model (adsbdb.com)")
+    p.add_argument("--faa-registry", action="store_true",
+                   help="also fall back to the FAA registry for make/model "
+                        "(covers US private/GA aircraft; ~73 MB one-time "
+                        "download into --data-dir)")
     return p
 
 
@@ -153,9 +160,15 @@ def main(argv=None):
                                   threshold=args.threshold)
                     if recorder:
                         recorder.flush()
+        type_store = None
+        if not args.no_lookup:
+            os.makedirs(args.data_dir, exist_ok=True)
+            type_store = aircraft.TypeStore(
+                os.path.join(args.data_dir, "aircraft.sqlite"),
+                use_faa=args.faa_registry)
         threading.Thread(target=capture_loop, daemon=True).start()
         server.serve(store, rx_llh, store.lock, min_conf, args.port,
-                     open_browser=True, history=history)
+                     open_browser=True, history=history, type_store=type_store)
         return
 
     # rich.Live with screen=True paints into the alternate screen buffer (like

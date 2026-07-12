@@ -23,7 +23,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #map { position: fixed; inset: 0; background: var(--bg); }
 .leaflet-top.leaflet-right { margin-top: 8px; }
 .plane-icon, .ring-label { background: none; border: none; }
-.stat, .badge, #clock, #meta .stat .v, #list .conf { font-variant-numeric: tabular-nums; }
+.stat, .badge, #clock, #meta .stat .v { font-variant-numeric: tabular-nums; }
 
 /* ---- top-left health strip -------------------------------------------- */
 #hud {
@@ -45,8 +45,8 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 
 /* ---- left bar --------------------------------------------------------- */
 #rail {
-  position: fixed; top: 10px; left: 10px; bottom: 84px; z-index: 1000;
-  width: 300px; display: flex; flex-direction: column;
+  position: fixed; top: 10px; left: 10px; bottom: 10px; z-index: 1000;
+  width: 300px; display: flex; flex-direction: column; overflow: hidden;
   background: var(--panel); border: 1px solid var(--edge); border-radius: 9px;
   backdrop-filter: blur(9px); -webkit-backdrop-filter: blur(9px);
   transition: transform .18s ease, opacity .18s ease;
@@ -63,12 +63,11 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
   transition: left .18s ease;
 }
 #railToggle.collapsed { left: 10px; }
-/* don't grow to fill: cards stay top-aligned so the selected plot sits right
-   under them (list still shrinks + scrolls when the aircraft count is large) */
-#list { flex: 0 1 auto; overflow-y: auto; padding: 8px; min-height: 40px; }
+/* fills the pane and scrolls; the detail panel stays pinned below it */
+#list { flex: 1 1 auto; overflow-y: auto; padding: 8px; min-height: 40px; }
 #list .row {
-  display: flex; align-items: center; gap: 10px; width: 100%; box-sizing: border-box;
-  margin: 3px 0; padding: 6px 12px 6px 9px; min-width: 0; overflow: hidden;
+  display: flex; flex-direction: column; gap: 5px; width: 100%; box-sizing: border-box;
+  margin: 3px 0; padding: 7px 10px; min-width: 0; overflow: hidden;
   background: #10161e; color: var(--ink); border: 1px solid var(--edge);
   border-left: 3px solid var(--edge-lit); border-radius: 6px; cursor: pointer;
 }
@@ -77,16 +76,14 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
                  background: rgba(53,208,214,.08); }
 #list .row.ghost { opacity: .5; font-style: italic; }
 #list .row.ghost.sel { opacity: 1; }
-/* info stays at its natural width; the graph fills the rest, starting right
-   next to the tail number instead of floating at the far edge */
-#list .info { flex: 0 0 auto; }
-#list .cs { display: block; font-weight: 600; font-size: 13px; letter-spacing: .3px;
+/* top line: callsign + make/model (dim, ellipsized). The sparkline lives on
+   its own full-width row below, so a long model never squeezes the graph. */
+#list .top { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+#list .cs { flex: 0 0 auto; font-weight: 600; font-size: 13px; letter-spacing: .3px;
             white-space: nowrap; }
-#list .conf { display: block; font-family: var(--mono); font-size: 11px;
-              color: var(--ink-dim); margin-top: 2px; white-space: nowrap; }
-/* basis 0 so it grows from nothing into the leftover space — never widens the
-   row past the panel no matter the canvas's intrinsic size */
-#list .spark { flex: 1 1 0; min-width: 0; width: 0; height: 30px; }
+#list .type { flex: 1 1 auto; min-width: 0; font-size: 11px; color: var(--ink-dim);
+              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#list .spark { display: block; width: 100%; height: 28px; }
 
 /* silent aircraft collapse to pills (flight/tail only); clicking one selects
    it, which expands it back into a full card above */
@@ -99,10 +96,12 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
               white-space: nowrap; font-style: italic; }
 #list .pill:hover { border-color: var(--edge-lit); color: var(--ink); }
 
-/* selected-aircraft detail: pinned below the list */
-#detail { display: none; flex: 0 0 auto; padding: 10px 8px 12px;
-          border-top: 1px solid var(--edge); }
+/* selected-aircraft detail: pinned to the bottom of the pane, with a distinct
+   darker background so it reads as separate from the scrollable list above */
+#detail { display: none; flex: 0 0 auto; padding: 11px 10px 12px;
+          background: #090d12; border-top: 1px solid var(--edge-lit); }
 #rail.selected #detail { display: block; }
+#detail #meta { margin-bottom: 10px; }   /* details sit above the graph */
 /* legend above the plot (top-right) so it never overlaps the data */
 #plotlegend { display: flex; justify-content: flex-end; gap: 14px;
               font-size: 11px; color: var(--ink-dim); margin-bottom: 2px; }
@@ -114,24 +113,49 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
                                  border-top: 2px solid var(--predicted); }
 #plot { display: block; width: 100%; height: 224px; background: transparent; }
 #meta .callsign { font-size: 18px; font-weight: 600; letter-spacing: .4px; }
-#meta .sub { font-size: 12px; color: var(--ink-dim); margin-top: 1px;
+#meta a.model { display: inline-block; font-size: 13px; color: var(--ink);
+                margin-top: 3px; text-decoration: none; cursor: pointer; }
+#meta a.model:hover { color: var(--accent); text-decoration: underline; }
+#meta .sub { font-size: 12px; color: var(--ink-dim); margin-top: 5px;
              font-family: var(--mono); }
 #meta .stale { font-size: 12px; color: var(--gold); margin-top: 4px; }
-#meta .stats { display: grid; grid-template-columns: repeat(4, 1fr);
-               gap: 6px; margin-top: 10px; }
+#meta .stats { display: grid; gap: 6px; margin-top: 10px; }
+#meta .stats.primary { grid-template-columns: repeat(2, 1fr); }
+#meta .stats.secondary { grid-template-columns: repeat(4, 1fr); margin-top: 6px; }
 #meta .stat { background: #10161e; border: 1px solid var(--edge);
-              border-radius: 6px; padding: 6px 7px; min-width: 0; }
+              border-radius: 6px; padding: 6px 5px; min-width: 0; }
 #meta .stat .k { display: block; font-size: 9px; text-transform: uppercase;
                  letter-spacing: .6px; color: var(--ink-dim); }
-#meta .stat .v { display: block; font-size: 14px; color: var(--ink);
-                 margin-top: 3px; font-family: var(--mono);
-                 white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#meta .stat .u { font-size: 10px; color: var(--ink-dim); margin-left: 2px; }
+/* values must never truncate: nowrap so a number never wraps mid-digit, but no
+   ellipsis clipping (a 5-digit altitude like 36000 was losing its last digit) */
+#meta .stat .v { display: block; font-size: 13px; color: var(--ink);
+                 margin-top: 3px; font-family: var(--mono); white-space: nowrap; }
+#meta .stat .u { font-size: 9px; color: var(--ink-dim); margin-left: 1px; }
+/* primary metrics: larger, accent-tinted */
+#meta .stats.primary .stat { padding: 9px 11px; background: #121c22;
+                             border-left: 2px solid var(--accent-dim); }
+#meta .stats.primary .k { color: var(--accent); }
+#meta .stats.primary .v { font-size: 18px; margin-top: 4px; }
+/* each headline metric gets its own muted hue for at-a-glance recognition:
+   range=teal (echoes the range rings), alt=sky blue, spd=amber, trk=violet */
+#meta .stat-range { border-left-color: #45a9ae; }
+#meta .stat-range .k { color: #59b6bb; }
+#meta .stat-alt   { border-left-color: #5f92cc; }
+#meta .stat-alt .k   { color: #77a3d6; }
+#meta .stat-spd   { border-left-color: #c99a55; }
+#meta .stat-spd .k   { color: #d3a869; }
+#meta .stat-trk   { border-left-color: #9683c6; }
+#meta .stat-trk .k   { color: #a695d0; }
+/* secondary fit diagnostics: muted line */
+#meta .stats.secondary .stat { background: transparent; border-color: #172230;
+                               padding: 5px 4px; }
+#meta .stats.secondary .k { font-size: 8px; }
+#meta .stats.secondary .v { font-size: 12px; color: var(--ink-dim); }
 #meta .placeholder { color: var(--ink-dim); font-size: 13px; }
 
 /* ---- bottom bar: scrubber only ---------------------------------------- */
 #console {
-  position: fixed; left: 10px; right: 10px; bottom: 10px; z-index: 1000;
+  position: fixed; left: 320px; right: 10px; bottom: 10px; z-index: 1000;
   background: var(--panel); border: 1px solid var(--edge); border-radius: 11px;
   backdrop-filter: blur(11px); -webkit-backdrop-filter: blur(11px);
 }

@@ -9,11 +9,13 @@ from .geometry import geodetic_to_ecef
 from .terminal import confidence
 
 
-def build_snapshot(store, rx_llh, min_conf=0.0, at=None, server_time=None):
+def build_snapshot(store, rx_llh, min_conf=0.0, at=None, server_time=None,
+                   type_store=None):
     """Build the JSON-serializable dashboard state. Caller holds store.lock.
 
     ``at`` is the epoch the frame represents (None => live). ``server_time`` is
-    the current epoch, so the client can tell how far behind live it is."""
+    the current epoch, so the client can tell how far behind live it is.
+    ``type_store`` (optional) supplies cached aircraft make/model/registration."""
     rx = geodetic_to_ecef(*rx_llh)
     fits = store.joint_fit()
     aircraft = []
@@ -38,9 +40,14 @@ def build_snapshot(store, rx_llh, min_conf=0.0, at=None, server_time=None):
                     "measured": float(measured[i]),
                     "predicted": float(x.doppler_pred)}
                    for i, x in enumerate(samples)]
+        # make/model/registration from the cache (None until it resolves;
+        # calling get() schedules a background lookup for a first-seen aircraft)
+        info = type_store.get(icao) if type_store is not None else None
         aircraft.append({
             "icao": icao,
             "flight": s.get("flight"),
+            "make": (info or {}).get("make"), "model": (info or {}).get("model"),
+            "reg": (info or {}).get("reg"),
             "lat": _f(s.get("lat")), "lon": _f(s.get("lon")), "alt": _f(s.get("alt")),
             "speed_kt": _f(s.get("speed_kt")), "track": _f(s.get("track")),
             "vrate": _f(s.get("vrate_fpm")),
@@ -70,7 +77,7 @@ _CTYPES = {"html": "text/html", "js": "application/javascript",
            "css": "text/css", "json": "application/json"}
 
 
-def _make_handler(store, rx_llh, lock, min_conf, history):
+def _make_handler(store, rx_llh, lock, min_conf, history, type_store):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass  # silence per-request logging
@@ -92,10 +99,11 @@ def _make_handler(store, rx_llh, lock, min_conf, history):
                 at = float(at)
                 past = history.reconstruct(at)
                 body = json.dumps(build_snapshot(past, rx_llh, min_conf,
-                                                 at=at)).encode()
+                                                 at=at, type_store=type_store)).encode()
             else:
                 with lock:
-                    body = json.dumps(build_snapshot(store, rx_llh, min_conf)).encode()
+                    body = json.dumps(build_snapshot(store, rx_llh, min_conf,
+                                                     type_store=type_store)).encode()
             self._send(200, "application/json", body)
 
         def _timeline(self):
@@ -129,14 +137,17 @@ def _make_handler(store, rx_llh, lock, min_conf, history):
     return Handler
 
 
-def make_server(store, rx_llh, lock, min_conf, port=0, history=None):
+def make_server(store, rx_llh, lock, min_conf, port=0, history=None,
+                type_store=None):
     return ThreadingHTTPServer(("127.0.0.1", port),
                                _make_handler(store, rx_llh, lock, min_conf,
-                                             history))
+                                             history, type_store))
 
 
-def serve(store, rx_llh, lock, min_conf, port, open_browser=False, history=None):
-    httpd = make_server(store, rx_llh, lock, min_conf, port, history=history)
+def serve(store, rx_llh, lock, min_conf, port, open_browser=False, history=None,
+          type_store=None):
+    httpd = make_server(store, rx_llh, lock, min_conf, port, history=history,
+                        type_store=type_store)
     actual = httpd.server_address[1]
     if open_browser:
         import webbrowser

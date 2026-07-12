@@ -235,19 +235,25 @@ function closestApproach(g) {
 }
 
 // ---- aircraft rail -------------------------------------------------------
-// Full aircraft card: callsign + confidence on the left, Doppler sparkline
-// filling the rest. Used for live aircraft and the one expanded (selected) ghost.
+// Make/model text from the snapshot (resolved + cached server-side; empty
+// until it resolves, or if the aircraft isn't in any database).
+function typeLabel(a) {
+  return [a.make, a.model].filter(Boolean).join(' ');
+}
+
+// Full aircraft card: callsign + make/model on the top line, Doppler sparkline
+// full-width below. Used for live aircraft and the one expanded (selected) ghost.
 function makeCard(a, ghost) {
   const row = el('div', 'row');
   if (a.icao === selected) row.classList.add('sel');
   if (ghost) row.classList.add('ghost');
-  const info = el('div', 'info');
-  info.append(el('span', 'cs', a.flight || a.icao),
-              el('span', 'conf', `conf ${a.conf}`));
+  const top = el('div', 'top');
+  top.append(el('span', 'cs', a.flight || a.icao),
+             el('span', 'type', typeLabel(a)));
   const spark = el('canvas', 'spark');
-  spark.width = 184; spark.height = 60;   // backing store; CSS scales down
+  spark.width = 320; spark.height = 56;   // backing store; CSS gives it full width
   row.dataset.icao = a.icao;              // clicks handled by a delegated listener
-  row.append(info, spark);
+  row.append(top, spark);
   requestAnimationFrame(() => drawSpark(spark, a));   // draw once flex width is known
   return row;
 }
@@ -412,14 +418,24 @@ function drawPlot() {
   const a = found.a, pts = a.doppler;
   const ts = pts.map(p => p.t), ms = pts.map(p => p.measured), ps = pts.map(p => p.predicted);
   const tmin = Math.min(...ts), tmax = Math.max(...ts);
-  // Symmetric about 0 so the zero line sits dead-centre and it's immediately
-  // clear which side (approaching / receding) each point falls on.
-  const yabs = Math.max(1, ...ms.map(Math.abs), ...ps.map(Math.abs));
+  // Symmetric about 0 so the zero line sits dead-centre. Robust scale: the
+  // predicted curve is always physical, but the measured carrier estimate goes
+  // wild on weak signals (spurious FFT peaks). Cap the range so a few garbage
+  // bursts don't dwarf everything — an 85th-percentile of |measured| plus a
+  // hard cap; off-scale points get clamped to the plot edge (a visible "rail"
+  // that flags an untrustworthy measurement rather than exploding the axis).
+  const CAP = 3000;   // Hz — real Doppler is well under this
+  const measAbs = ms.map(Math.abs).sort((a, b) => a - b);
+  const p85 = measAbs.length ? measAbs[Math.floor(measAbs.length * 0.85)] : 0;
+  const yabs = Math.max(300, Math.min(CAP, Math.max(p85, ...ps.map(Math.abs))));
   const ymin = -yabs, ymax = yabs;
   const padL = 30, padR = 10, padT = 18, padB = 32;
   const plotW = W - padL - padR, plotH = H - padT - padB;
   const sx = t => padL + plotW * (tmax === tmin ? 0.5 : (t - tmin) / (tmax - tmin));
-  const sy = y => padT + plotH * (ymax === ymin ? 0.5 : 1 - (y - ymin) / (ymax - ymin));
+  const sy = y => {   // clamp off-scale points to the plot edge
+    const c = Math.max(ymin, Math.min(ymax, y));
+    return padT + plotH * (ymax === ymin ? 0.5 : 1 - (c - ymin) / (ymax - ymin));
+  };
 
   ctx.font = '10px ui-monospace, monospace'; ctx.lineWidth = 1;
   const yTicks = niceTicks(ymin, ymax, Math.max(2, Math.floor(plotH / 40)));
@@ -480,29 +496,46 @@ function el(tag, cls, text) {
 function renderMeta(meta, a, ghostSince) {
   const trk = a.track != null ? Math.round(a.track) + '°' : '-';
   const range_mi = a.range_km != null ? (a.range_km * 0.621371).toFixed(1) : '-';
-  const stats = [
-    ['scale', a.scale], ['corr', a.corr], ['conf', a.conf], ['bursts', a.bursts],
-    ['range', range_mi, a.range_km != null ? 'mi' : ''],
-    ['alt', a.alt ?? '-', a.alt != null ? 'ft' : ''],
-    ['spd', a.speed_kt ?? '-', a.speed_kt != null ? 'kt' : ''], ['trk', trk],
-  ];
-  const grid = el('div', 'stats');
-  for (const [k, v, u] of stats) {
-    const cell = el('div', 'stat');
-    cell.append(el('span', 'k', k));
+  const cell = (k, v, u) => {
+    const c = el('div', 'stat stat-' + k);   // per-metric class for colour
+    c.append(el('span', 'k', k));
     const val = el('span', 'v', String(v));
     if (u) val.append(el('span', 'u', u));
-    cell.append(val);
-    grid.append(cell);
-  }
+    c.append(val);
+    return c;
+  };
+  const grid = (cls, items) => {
+    const g = el('div', 'stats ' + cls);
+    for (const [k, v, u] of items) g.append(cell(k, v, u));
+    return g;
+  };
+  // range/alt/spd/trk are the headline metrics; scale/corr/conf/bursts are the
+  // fit diagnostics, shown muted below.
+  const primary = grid('primary', [
+    ['range', range_mi, a.range_km != null ? 'mi' : ''],
+    ['alt', a.alt ?? '-', a.alt != null ? 'ft' : ''],
+    ['spd', a.speed_kt ?? '-', a.speed_kt != null ? 'kt' : ''],
+    ['trk', trk],
+  ]);
+  const secondary = grid('secondary', [
+    ['scale', a.scale], ['corr', a.corr], ['conf', a.conf], ['bursts', a.bursts],
+  ]);
   const head = el('div', 'callsign', a.flight || a.icao);
   const frag = [head];
+  const model = [typeLabel(a), a.reg].filter(Boolean).join(' · ');
+  if (model) {                          // click -> Google image search
+    const link = el('a', 'model', model);
+    link.href = 'https://www.google.com/search?tbm=isch&q=' +
+      encodeURIComponent([typeLabel(a), a.reg].filter(Boolean).join(' '));
+    link.target = '_blank'; link.rel = 'noopener';
+    frag.push(link);
+  }
   if (a.flight) frag.push(el('div', 'sub', a.icao));
   if (ghostSince) {
     const secs = Math.round((Date.now() - ghostSince) / 1000);
     frag.push(el('div', 'stale', `stale · last heard ${secs}s ago`));
   }
-  frag.push(grid);
+  frag.push(primary, secondary);
   meta.replaceChildren(...frag);
 }
 
@@ -537,9 +570,12 @@ function updateHud() {
   }
   document.getElementById('h-rate').innerHTML =
     `${rate.toFixed(1)}<span class="u">brst/s</span>`;
+  // Only flag PAST while scrubbing; when live the highlighted LIVE button is
+  // the sole indicator (no duplicated "LIVE").
   const badge = document.getElementById('h-mode');
-  badge.textContent = mode === 'live' ? 'LIVE' : 'PAST';
-  badge.className = 'badge ' + (mode === 'live' ? 'live' : 'past');
+  badge.style.display = mode === 'live' ? 'none' : '';
+  badge.textContent = 'PAST';
+  badge.className = 'badge past';
 }
 
 // ---- timeline scrubber ---------------------------------------------------
