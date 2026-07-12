@@ -31,6 +31,9 @@ FAA_ZIP = "https://registry.faa.gov/database/ReleasableAircraft.zip"
 # planespotters photo API, keyed by registration; its terms require a UA with a
 # contact URL, and photos link back to the photo page (credit the photographer).
 PLANESPOTTERS = "https://api.planespotters.net/pub/photos/reg/{}"
+# airport-data.com is the fallback photo source (different pool; some GA tails
+# planespotters lacks). Returns a thumbnail, a photo-page link and a credit.
+AIRPORTDATA = "https://airport-data.com/api/ac_thumb.json?r={}&n=1"
 UA = "doppler1090/1.0 (+https://github.com/coffee-converter/doppler1090)"
 
 
@@ -162,6 +165,17 @@ class TypeStore:
             self._conn.commit()
 
     def _resolve_photo(self, reg):
+        """Try each photo source in turn; return (info, source) on the first
+        hit, (None, 'none') if all confirm no photo. A transient error in any
+        source raises out so the whole lookup retries later."""
+        for fetch, source in ((self._ps_photo, "planespotters"),
+                              (self._ad_photo, "airport-data")):
+            info = fetch(reg)            # None => no photo; raises on transient
+            if info:
+                return info, source
+        return None, "none"
+
+    def _ps_photo(self, reg):
         req = urllib.request.Request(PLANESPOTTERS.format(reg),
                                      headers={"User-Agent": UA})
         try:
@@ -169,15 +183,32 @@ class TypeStore:
                 j = json.load(resp)
         except urllib.error.HTTPError as e:
             if e.code == 404:
-                return None, "none"
+                return None
             raise
         photos = (j or {}).get("photos") or []
         if photos:
             p = photos[0]
             thumb = p.get("thumbnail_large") or p.get("thumbnail") or {}
             return {"url": thumb.get("src"), "link": p.get("link"),
-                    "by": p.get("photographer")}, "planespotters"
-        return None, "none"
+                    "by": p.get("photographer")}
+        return None
+
+    def _ad_photo(self, reg):
+        req = urllib.request.Request(AIRPORTDATA.format(reg),
+                                     headers={"User-Agent": UA})
+        try:
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                j = json.load(resp)
+        except urllib.error.HTTPError as e:
+            if e.code == 404:                # airport-data returns 404 for misses
+                return None
+            raise
+        data = (j or {}).get("data") or []
+        if data:
+            d = data[0]
+            return {"url": d.get("image"), "link": d.get("link"),
+                    "by": d.get("photographer")}
+        return None
 
     def _store_photo(self, reg, info, source):
         with self._lock:
