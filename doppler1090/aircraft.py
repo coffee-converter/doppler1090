@@ -28,7 +28,10 @@ import zipfile
 
 ADSBDB = "https://api.adsbdb.com/v0/aircraft/{}"
 FAA_ZIP = "https://registry.faa.gov/database/ReleasableAircraft.zip"
-UA = "doppler1090 aircraft lookup"
+# planespotters photo API, keyed by registration; its terms require a UA with a
+# contact URL, and photos link back to the photo page (credit the photographer).
+PLANESPOTTERS = "https://api.planespotters.net/pub/photos/reg/{}"
+UA = "doppler1090/1.0 (+https://github.com/coffee-converter/doppler1090)"
 
 
 class TypeStore:
@@ -41,6 +44,9 @@ class TypeStore:
         self._conn.execute(
             "CREATE TABLE IF NOT EXISTS faa (icao TEXT PRIMARY KEY, "
             "reg TEXT, make TEXT, model TEXT)")
+        self._conn.execute(
+            "CREATE TABLE IF NOT EXISTS photo_cache (reg TEXT PRIMARY KEY, "
+            "url TEXT, link TEXT, by TEXT, source TEXT, ts REAL)")
         self._conn.commit()
         self._lock = threading.Lock()   # guards all _conn access
         self._mem = {}                  # icao -> {make,model,reg} | None (miss)
@@ -48,8 +54,13 @@ class TypeStore:
                 "SELECT icao, make, model, reg, source FROM type_cache"):
             self._mem[icao] = None if source == "none" else {
                 "make": make, "model": model, "reg": reg}
-        self._q = queue.Queue()         # icaos to resolve
-        self._queued = set()            # icaos in flight (avoid duplicates)
+        self._photo_mem = {}            # reg -> {url,link,by} | None (miss)
+        for reg, url, link, by, source in self._conn.execute(
+                "SELECT reg, url, link, by, source FROM photo_cache"):
+            self._photo_mem[reg] = None if source == "none" else {
+                "url": url, "link": link, "by": by}
+        self._q = queue.Queue()         # items: ("type", icao) | ("photo", reg)
+        self._queued = set()            # in-flight items (avoid duplicates)
         self._adsb_missed = set()       # tried adsbdb already, awaiting FAA
         self._faa_ready = self._count("faa") > 0
         threading.Thread(target=self._worker, daemon=True).start()
@@ -61,24 +72,38 @@ class TypeStore:
         icao = icao.upper()
         if icao in self._mem:
             return self._mem[icao]
-        if icao not in self._queued:
-            self._queued.add(icao)
-            self._q.put(icao)
+        self._enqueue(("type", icao))
         return None
+
+    def get_photo(self, reg):
+        """Cached photo {url,link,by} or None; schedules a lookup on a miss."""
+        reg = reg.upper()
+        if reg in self._photo_mem:
+            return self._photo_mem[reg]
+        self._enqueue(("photo", reg))
+        return None
+
+    def _enqueue(self, item):
+        if item not in self._queued:
+            self._queued.add(item)
+            self._q.put(item)
 
     # ---- background resolution -------------------------------------------
     def _worker(self):
         while True:
-            icao = self._q.get()
+            kind, key = self._q.get()
             info = source = None
             try:
-                info, source = self._resolve(icao)
+                info, source = (self._resolve(key) if kind == "type"
+                                else self._resolve_photo(key))
             except Exception:
                 source = None            # transient: leave unresolved, retry later
             if source is not None:       # definitive answer (hit or real miss)
-                self._store(icao, info, source)
-                self._mem[icao] = info
-            self._queued.discard(icao)
+                if kind == "type":
+                    self._store(key, info, source); self._mem[key] = info
+                else:
+                    self._store_photo(key, info, source); self._photo_mem[key] = info
+            self._queued.discard((kind, key))
             time.sleep(0.3)              # be polite to the API
 
     def _resolve(self, icao):
@@ -129,6 +154,33 @@ class TypeStore:
                 "(icao, make, model, reg, source, ts) VALUES (?,?,?,?,?,?)",
                 (icao, info and info["make"], info and info["model"],
                  info and info["reg"], source, time.time()))
+            self._conn.commit()
+
+    def _resolve_photo(self, reg):
+        req = urllib.request.Request(PLANESPOTTERS.format(reg),
+                                     headers={"User-Agent": UA})
+        try:
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                j = json.load(resp)
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                return None, "none"
+            raise
+        photos = (j or {}).get("photos") or []
+        if photos:
+            p = photos[0]
+            thumb = p.get("thumbnail_large") or p.get("thumbnail") or {}
+            return {"url": thumb.get("src"), "link": p.get("link"),
+                    "by": p.get("photographer")}, "planespotters"
+        return None, "none"
+
+    def _store_photo(self, reg, info, source):
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO photo_cache (reg, url, link, by, source, "
+                "ts) VALUES (?,?,?,?,?,?)",
+                (reg, info and info["url"], info and info["link"],
+                 info and info["by"], source, time.time()))
             self._conn.commit()
 
     def _count(self, table):

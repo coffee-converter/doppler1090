@@ -9,10 +9,24 @@
 // Zoom locked to the range the FAA sectional cache actually covers (native
 // tiles exist z8-z12; outside that the service 404s). Max 11 because
 // detectRetina pulls one level deeper, so map-zoom 11 already shows z12 tiles.
-const map = L.map('map', { minZoom: 7, maxZoom: 11, zoomControl: false })
-  .setView([41.88, -87.63], 10);   // Chicago placeholder; recenters on receiver
+const map = L.map('map', { minZoom: 7, maxZoom: 11, zoomControl: false });
 // Zoom control on the right, by the layer picker — clear of the health strip.
 L.control.zoom({ position: 'topright' }).addTo(map);
+// Center a point in the *visible* map area — clear of the left panel (~320 px)
+// and the bottom console (~84 px) — rather than the geometric centre.
+function centerOnVisible(lat, lon, zoom) {
+  const z = zoom == null ? map.getZoom() : zoom;
+  if (window.innerWidth <= 760) { map.setView([lat, lon], z); return; }
+  // Put the point at the centre of the *visible* map area (right of the ~320px
+  // panel, above the ~84px console) by computing the map centre directly: the
+  // centre must sit so the point projects to the visible-area centre pixel.
+  const size = map.getSize();
+  const dx = (320 + size.x) / 2 - size.x / 2;   // = 160, shift right
+  const dy = (size.y - 84) / 2 - size.y / 2;    // = -42, shift up
+  const p = map.project([lat, lon], z);
+  map.setView(map.unproject(p.subtract([dx, dy]), z), z);
+}
+centerOnVisible(41.978, -87.904, 9);   // O'Hare placeholder; recenters on receiver
 const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
   { maxZoom: 19, detectRetina: true, attribution: '© OpenStreetMap' });
 const faaChart = name => L.tileLayer(
@@ -54,6 +68,7 @@ let selLayers = [];           // line-of-sight + closest-approach overlays
 let selected = null;
 let latest = { aircraft: [] };
 let serverNow = 0;            // most recent server_time seen
+let hadAircraft = false;      // did the last live frame have any aircraft?
 
 let mode = 'live';            // 'live' | 'past'
 let viewTime = 0;             // epoch of the current past frame
@@ -74,6 +89,24 @@ function dopColor(hz) {
   return `rgb(255,${Math.round(255*(1-t))},${Math.round(255*(1-t))})`;
 }
 
+// Colour the "doppler1090" logo per-character as a real Doppler pass at ~10 mi
+// closest approach: the radial-velocity S-curve f_d ∝ -x/√(d²+x²) sampled across
+// the letters, run through the same dopColor scale (blue -> white -> red).
+function buildLogo() {
+  const text = 'doppler1090', N = text.length, d = 20, A = 18;   // 20 mi pass
+  const brand = document.querySelector('.brand');
+  if (!brand) return;
+  brand.replaceChildren(...[...text].map((ch, i) => {
+    const x = -A + 2 * A * i / (N - 1);
+    // amplitude kept under the 600 Hz saturation point so the ends stay a soft
+    // blue/red rather than fully saturated.
+    const s = document.createElement('span');
+    s.textContent = ch;
+    s.style.color = dopColor(540 * (-x / Math.sqrt(d * d + x * x)));
+    return s;
+  }));
+}
+
 function findAircraft(icao) {
   const live = latest.aircraft.find(x => x.icao === icao);
   if (live) return { a: live, ghostSince: null };
@@ -86,11 +119,20 @@ function findAircraft(icao) {
 function render(state) {
   latest = state;
   if (state.server_time) serverNow = state.server_time;
+  // auto-select the first aircraft when the live list goes empty -> populated
+  // (startup, or all dropped then a new one appears), so details show without a
+  // manual first click. Keyed off that transition so it never fights a deselect.
+  const hasSel = selected != null && state.aircraft.some(a => a.icao === selected);
+  if (mode === 'live' && !hasSel && state.aircraft.length && !hadAircraft) {
+    selected = state.aircraft[0].icao;
+    document.getElementById('rail').classList.add('selected');
+  }
+  if (mode === 'live') hadAircraft = state.aircraft.length > 0;
   if (!receiverMarker && state.receiver && state.receiver.lat != null) {
     receiverMarker = L.circleMarker([state.receiver.lat, state.receiver.lon],
       { radius: 7, color: '#000', weight: 2, fillColor: '#ffd400', fillOpacity: 1 })
       .addTo(map).bindTooltip('receiver');
-    map.setView([state.receiver.lat, state.receiver.lon], map.getZoom());
+    centerOnVisible(state.receiver.lat, state.receiver.lon);  // visible-area centre
     drawRangeRings(state.receiver);
   }
   const live = mode === 'live';
@@ -142,10 +184,12 @@ function render(state) {
     if (age > GHOST_TTL_MS) { removeEntry(icao); continue; }
     const isSel = icao === selected;
     const op = ghostFade(age);
-    e.tracks.forEach(l => l.setStyle({ opacity: op, weight: isSel ? 5 : 3 }));
+    // a selected ghost stays fully visible (gold, full opacity) so you can see
+    // which quiet aircraft is selected; unselected ghosts fade as before.
+    e.tracks.forEach(l => l.setStyle({ opacity: isSel ? 0.9 : op, weight: isSel ? 5 : 3 }));
     if (e.marker) {
       setIconIfChanged(e, e.data ? e.data.track : 0, isSel, true);
-      e.marker.setOpacity(Math.max(op, 0.25));
+      e.marker.setOpacity(isSel ? 1 : Math.max(op, 0.25));
       e.marker.setZIndexOffset(isSel ? 1000 : 0);
     }
   }
@@ -163,21 +207,24 @@ function removeEntry(icao) {
   delete layers[icao];
 }
 
-// Concentric range rings from the receiver — the "radar" scale reference.
+// Concentric range rings from the receiver, in nautical miles (aviation
+// standard, matching kt/ft) — the "radar" scale reference.
+const NM_TO_M = 1852;
 function drawRangeRings(rx) {
   if (ringsDrawn) return;
   ringsDrawn = true;
-  for (const km of [25, 50, 75, 100]) {
-    L.circle([rx.lat, rx.lon], { radius: km * 1000, fill: false,
+  for (const nm of [25, 50, 75, 100, 150, 200, 250]) {
+    const r = nm * NM_TO_M;
+    L.circle([rx.lat, rx.lon], { radius: r, fill: false,
       color: '#4be3e9', weight: 1.4, opacity: 0.6, dashArray: '6 6',
       interactive: false }).addTo(map);
-    L.marker([rx.lat + (km * 1000) / 111320, rx.lon], {
+    L.marker([rx.lat + r / 111320, rx.lon], {
       interactive: false,
       icon: L.divIcon({ className: 'ring-label',
-        html: `<span style="display:block;width:36px;text-align:center;` +
+        html: `<span style="display:block;width:48px;text-align:center;` +
               `color:#bfeef1;opacity:.9;font:9px ui-monospace,monospace;` +
-              `text-shadow:0 0 3px #000,0 0 2px #000">${km}</span>`,
-        iconSize: [36, 11], iconAnchor: [18, 6] }),
+              `text-shadow:0 0 3px #000,0 0 2px #000">${nm} nm</span>`,
+        iconSize: [48, 11], iconAnchor: [24, 6] }),
     }).addTo(map);
   }
 }
@@ -267,6 +314,10 @@ function renderList() {
     const e = layers[icao];
     if (!liveSet.has(icao) && e.ghostSince != null && e.data) ghosts.push(e.data);
   }
+  if (!latest.aircraft.length && !ghosts.length) {   // nothing decoded yet
+    div.appendChild(el('div', 'listwait', 'waiting for ADS-B data…'));
+    return;
+  }
   // live aircraft: full cards, first-seen order (no reshuffle as conf updates)
   for (const a of latest.aircraft) div.appendChild(makeCard(a, false));
   // silent aircraft collapse to pills; the selected one expands to a full card
@@ -349,11 +400,6 @@ function select(icao) {
   render(latest);
 }
 
-function toggleRail() {
-  const closed = document.getElementById('rail').classList.toggle('closed');
-  document.getElementById('railToggle').classList.toggle('collapsed', closed);
-}
-
 // ---- measured-vs-predicted plot -----------------------------------------
 function niceTicks(min, max, count) {
   if (!isFinite(min) || !isFinite(max) || min === max) return { step: 1, values: [min] };
@@ -397,7 +443,11 @@ function predictedLine(pts) {
 
 function drawPlot() {
   const c = document.getElementById('plot');
-  if (!selected) return;
+  if (!selected) {
+    document.getElementById('meta').replaceChildren(
+      el('div', 'placeholder', 'select an aircraft above to see details'));
+    return;
+  }
   const ctx = c.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
   const W = c.clientWidth || 600, H = c.clientHeight || 210;
@@ -438,7 +488,10 @@ function drawPlot() {
   };
 
   ctx.font = '10px ui-monospace, monospace'; ctx.lineWidth = 1;
-  const yTicks = niceTicks(ymin, ymax, Math.max(2, Math.floor(plotH / 40)));
+  let yTicks = niceTicks(ymin, ymax, Math.max(2, Math.floor(plotH / 40)));
+  // a symmetric range can snap to a step wider than the half-range, leaving only
+  // the lone 0 tick — recompute finer so there's always a real scale.
+  if (yTicks.values.length < 3) yTicks = niceTicks(ymin, ymax, 6);
   const yDec = yTicks.step < 1 ? 1 : 0;
   ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
   for (const v of yTicks.values) {
@@ -495,7 +548,7 @@ function el(tag, cls, text) {
 
 function renderMeta(meta, a, ghostSince) {
   const trk = a.track != null ? Math.round(a.track) + '°' : '-';
-  const range_mi = a.range_km != null ? (a.range_km * 0.621371).toFixed(1) : '-';
+  const range_nm = a.range_km != null ? (a.range_km / 1.852).toFixed(1) : '-';
   const cell = (k, v, u) => {
     const c = el('div', 'stat stat-' + k);   // per-metric class for colour
     c.append(el('span', 'k', k));
@@ -512,7 +565,7 @@ function renderMeta(meta, a, ghostSince) {
   // range/alt/spd/trk are the headline metrics; scale/corr/conf/bursts are the
   // fit diagnostics, shown muted below.
   const primary = grid('primary', [
-    ['range', range_mi, a.range_km != null ? 'mi' : ''],
+    ['range', range_nm, a.range_km != null ? 'nm' : ''],
     ['alt', a.alt ?? '-', a.alt != null ? 'ft' : ''],
     ['spd', a.speed_kt ?? '-', a.speed_kt != null ? 'kt' : ''],
     ['trk', trk],
@@ -523,19 +576,27 @@ function renderMeta(meta, a, ghostSince) {
   const head = el('div', 'callsign', a.flight || a.icao);
   const frag = [head];
   const model = [typeLabel(a), a.reg].filter(Boolean).join(' · ');
-  if (model) {                          // click -> Google image search
-    const link = el('a', 'model', model);
-    link.href = 'https://www.google.com/search?tbm=isch&q=' +
-      encodeURIComponent([typeLabel(a), a.reg].filter(Boolean).join(' '));
-    link.target = '_blank'; link.rel = 'noopener';
-    frag.push(link);
-  }
+  if (model) frag.push(el('div', 'model', model));
   if (a.flight) frag.push(el('div', 'sub', a.icao));
   if (ghostSince) {
     const secs = Math.round((Date.now() - ghostSince) / 1000);
     frag.push(el('div', 'stale', `stale · last heard ${secs}s ago`));
   }
   frag.push(primary, secondary);
+  // a real photo of this exact tail (planespotters, by registration); clicking
+  // opens the full photo page. Sits at the top of the detail.
+  if (a.photo) {
+    const fig = el('div', 'photo');
+    const link = el('a');
+    link.href = a.photo_link || a.photo; link.target = '_blank'; link.rel = 'noopener';
+    const img = document.createElement('img');
+    img.src = a.photo; img.alt = model || a.flight || a.icao; img.loading = 'lazy';
+    img.onerror = () => fig.remove();     // e.g. offline: drop the broken image
+    link.append(img); fig.append(link);
+    if (a.photo_by)
+      fig.append(el('div', 'credit', '© ' + a.photo_by + ' · planespotters.net'));
+    frag.unshift(fig);
+  }
   meta.replaceChildren(...frag);
 }
 
@@ -563,13 +624,18 @@ function updateHud() {
     : `${utc} −${dur((tl ? tl.end : serverNow) - viewTime)}`;
   const up = (tl && tl.start) ? serverNow - tl.start : 0;
   document.getElementById('h-uptime').innerHTML = `${dur(up)}<span class="u">up</span>`;
-  let rate = 0;
+  // decode rate as bursts/min over a fixed recent window (a sparse dipole feed
+  // reads ~0 on a per-second rate; per-minute is meaningful).
+  let perMin = 0;
   if (tl && tl.buckets && tl.buckets.length) {
-    const w = (tl.end - tl.start) / tl.buckets.length || 1;
-    rate = tl.buckets[tl.buckets.length - 1] / w;
+    const bw = (tl.end - tl.start) / tl.buckets.length || 1;   // seconds/bucket
+    const win = Math.min(60, tl.end - tl.start) || 1;          // seconds
+    const nb = Math.max(1, Math.round(win / bw));
+    const recent = tl.buckets.slice(-nb).reduce((a, b) => a + b, 0);
+    perMin = recent * 60 / (nb * bw);
   }
   document.getElementById('h-rate').innerHTML =
-    `${rate.toFixed(1)}<span class="u">brst/s</span>`;
+    `${perMin < 10 ? perMin.toFixed(1) : perMin.toFixed(0)}<span class="u">brst/min</span>`;
   // Only flag PAST while scrubbing; when live the highlighted LIVE button is
   // the sole indicator (no duplicated "LIVE").
   const badge = document.getElementById('h-mode');
@@ -674,7 +740,6 @@ document.getElementById('playPause').onclick = () => {
   if (mode === 'live') seek(Math.max(tl.start, tl.end - 120));  // rewind 2 min
   playing = !playing; updateTransport();
 };
-document.getElementById('railToggle').onclick = toggleRail;
 // Delegated so a click still selects even though renderList rebuilds the rows
 // every second (a per-row handler can be torn out from under the pointer).
 // pointerdown (not click): fires on press alone, so a selection can't be
@@ -694,12 +759,10 @@ setInterval(() => {
 }, 250);
 
 // ---- keyboard ------------------------------------------------------------
-const rail = document.getElementById('rail');
 window.addEventListener('keydown', e => {
   if (e.key === ' ') { e.preventDefault(); document.getElementById('playPause').click(); }
   else if (e.key.toLowerCase() === 'l') goLive();
   else if (e.key === 'Escape') select(selected);
-  else if (e.key === 'Tab') { e.preventDefault(); toggleRail(); }
   else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') cycle(e.key === 'ArrowRight' ? 1 : -1);
 });
 function cycle(dir) {
@@ -711,6 +774,7 @@ function cycle(dir) {
 }
 
 // ---- main loop -----------------------------------------------------------
+buildLogo();
 fetchState(null);
 pollTimeline();
 setInterval(() => { if (mode === 'live') fetchState(null); }, 1000);

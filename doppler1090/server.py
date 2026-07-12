@@ -40,14 +40,20 @@ def build_snapshot(store, rx_llh, min_conf=0.0, at=None, server_time=None,
                     "measured": float(measured[i]),
                     "predicted": float(x.doppler_pred)}
                    for i, x in enumerate(samples)]
-        # make/model/registration from the cache (None until it resolves;
-        # calling get() schedules a background lookup for a first-seen aircraft)
+        # make/model/registration + a photo from the cache (None until resolved;
+        # calling get()/get_photo() schedules a background lookup on first sight)
         info = type_store.get(icao) if type_store is not None else None
+        reg = (info or {}).get("reg")
+        photo = (type_store.get_photo(reg)
+                 if (type_store is not None and reg) else None)
         aircraft.append({
             "icao": icao,
             "flight": s.get("flight"),
             "make": (info or {}).get("make"), "model": (info or {}).get("model"),
-            "reg": (info or {}).get("reg"),
+            "reg": reg,
+            "photo": (photo or {}).get("url"),
+            "photo_link": (photo or {}).get("link"),
+            "photo_by": (photo or {}).get("by"),
             "lat": _f(s.get("lat")), "lon": _f(s.get("lon")), "alt": _f(s.get("alt")),
             "speed_kt": _f(s.get("speed_kt")), "track": _f(s.get("track")),
             "vrate": _f(s.get("vrate_fpm")),
@@ -74,7 +80,9 @@ def _f(v):
 
 WEB_DIR = os.path.join(os.path.dirname(__file__), "web")
 _CTYPES = {"html": "text/html", "js": "application/javascript",
-           "css": "text/css", "json": "application/json"}
+           "css": "text/css", "json": "application/json",
+           "png": "image/png", "jpg": "image/jpeg", "gif": "image/gif",
+           "svg": "image/svg+xml", "ico": "image/x-icon"}
 
 
 def _make_handler(store, rx_llh, lock, min_conf, history, type_store):

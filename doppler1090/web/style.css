@@ -26,15 +26,14 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 .stat, .badge, #clock, #meta .stat .v { font-variant-numeric: tabular-nums; }
 
 /* ---- top-left health strip -------------------------------------------- */
-#hud {
-  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px;
-  padding: 10px 11px; border-bottom: 1px solid var(--edge);
-  font-size: 12px; letter-spacing: .3px;
-}
-#hud .brand { font-weight: 600; letter-spacing: .5px; margin-right: 2px; }
-#hud .brand b { color: var(--accent); font-weight: 600; }
-#hud .stat { font-family: var(--mono); }
-#hud .stat .u { color: var(--ink-dim); margin-left: 3px; font-size: 10px; }
+#hud { padding: 10px 11px; border-bottom: 1px solid var(--edge); }
+/* "doppler1090" is coloured per-character in JS as a real Doppler pass:
+   approaching-blue, through white at closest approach, to receding-red. */
+#hud .brand { font-size: 17px; font-weight: 700; letter-spacing: .4px; }
+#hud .statrow { display: flex; flex-wrap: wrap; gap: 3px 12px; margin-top: 6px;
+                font-size: 11px; letter-spacing: .3px; }
+#hud .stat { font-family: var(--mono); color: var(--ink-dim); }
+#hud .stat .u { margin-left: 3px; font-size: 10px; }
 /* live/past badge — lives in the bottom scrubber bar */
 .badge { padding: 2px 8px; border-radius: 5px; font-size: 11px;
          font-weight: 700; letter-spacing: .8px; }
@@ -51,20 +50,10 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
   backdrop-filter: blur(9px); -webkit-backdrop-filter: blur(9px);
   transition: transform .18s ease, opacity .18s ease;
 }
-#rail.closed { transform: translateX(-320px); opacity: 0; pointer-events: none; }
-/* Fixed (not a rail child) so it stays put — and clickable — when the rail
-   slides away. Sits at the rail's edge when open, at the margin when closed. */
-#railToggle {
-  position: fixed; z-index: 1001; top: 14px; left: 318px;
-  width: 30px; height: 30px; border-radius: 7px;
-  background: var(--panel); border: 1px solid var(--edge);
-  color: var(--accent); font-size: 15px; cursor: pointer;
-  backdrop-filter: blur(9px); -webkit-backdrop-filter: blur(9px);
-  transition: left .18s ease;
-}
-#railToggle.collapsed { left: 10px; }
 /* fills the pane and scrolls; the detail panel stays pinned below it */
 #list { flex: 1 1 auto; overflow-y: auto; padding: 8px; min-height: 40px; }
+#list .listwait { color: var(--ink-dim); font-size: 13px; text-align: center;
+                  padding: 30px 12px; }
 #list .row {
   display: flex; flex-direction: column; gap: 5px; width: 100%; box-sizing: border-box;
   margin: 3px 0; padding: 7px 10px; min-width: 0; overflow: hidden;
@@ -92,18 +81,27 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
                  border-top: 1px solid var(--edge); }
 #list .pill { font-size: 11px; font-weight: 600; color: var(--ink-dim);
               background: #10161e; border: 1px solid var(--edge);
+              border-left: 3px solid var(--edge-lit);   /* match the cards */
               border-radius: 999px; padding: 3px 9px; cursor: pointer;
               white-space: nowrap; font-style: italic; }
 #list .pill:hover { border-color: var(--edge-lit); color: var(--ink); }
 
-/* selected-aircraft detail: pinned to the bottom of the pane, with a distinct
-   darker background so it reads as separate from the scrollable list above */
-#detail { display: none; flex: 0 0 auto; padding: 11px 10px 12px;
+/* detail: pinned to the bottom of the pane, with a distinct darker background
+   so it reads as separate from the scrollable list above. Always shown — it
+   holds a placeholder when nothing is selected. */
+#detail { flex: 0 0 auto; min-height: 360px; padding: 11px 10px 12px;
           background: #090d12; border-top: 1px solid var(--edge-lit); }
-#rail.selected #detail { display: block; }
 #detail #meta { margin-bottom: 10px; }   /* details sit above the graph */
+/* nothing selected: centre the placeholder in the detail area */
+#rail:not(.selected) #detail { display: flex; align-items: center;
+                               justify-content: center; }
+#rail:not(.selected) #detail #meta { margin-bottom: 0; }
+/* the graph only appears once an aircraft is selected */
+#plotlegend, #plot { display: none; }
+#rail.selected #plotlegend { display: flex; }
+#rail.selected #plot { display: block; }
 /* legend above the plot (top-right) so it never overlaps the data */
-#plotlegend { display: flex; justify-content: flex-end; gap: 14px;
+#plotlegend { justify-content: flex-end; gap: 14px;
               font-size: 11px; color: var(--ink-dim); margin-bottom: 2px; }
 #plotlegend .lg { display: inline-flex; align-items: center; gap: 5px; }
 #plotlegend .lg::before { content: ''; }
@@ -111,13 +109,18 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
                                 background: var(--measured); }
 #plotlegend .predicted::before { width: 12px; height: 0;
                                  border-top: 2px solid var(--predicted); }
-#plot { display: block; width: 100%; height: 224px; background: transparent; }
+#plot { width: 100%; height: 185px; background: transparent; }
 #meta .callsign { font-size: 18px; font-weight: 600; letter-spacing: .4px; }
-#meta a.model { display: inline-block; font-size: 13px; color: var(--ink);
-                margin-top: 3px; text-decoration: none; cursor: pointer; }
-#meta a.model:hover { color: var(--accent); text-decoration: underline; }
+#meta .model { display: block; font-size: 13px; color: var(--ink);
+               margin-top: 3px; }
 #meta .sub { font-size: 12px; color: var(--ink-dim); margin-top: 5px;
              font-family: var(--mono); }
+/* photo of the actual tail (full-width), clickable to the full photo page */
+#meta .photo { margin-bottom: 11px; }
+#meta .photo a { display: block; }
+#meta .photo img { display: block; width: 100%; border-radius: 6px; }
+#meta .credit { font-size: 9px; color: #424c5b; margin-top: 3px;
+                text-align: right; }
 #meta .stale { font-size: 12px; color: var(--gold); margin-top: 4px; }
 #meta .stats { display: grid; gap: 6px; margin-top: 10px; }
 #meta .stats.primary { grid-template-columns: repeat(2, 1fr); }
@@ -130,28 +133,31 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
    ellipsis clipping (a 5-digit altitude like 36000 was losing its last digit) */
 #meta .stat .v { display: block; font-size: 13px; color: var(--ink);
                  margin-top: 3px; font-family: var(--mono); white-space: nowrap; }
-#meta .stat .u { font-size: 9px; color: var(--ink-dim); margin-left: 1px; }
+#meta .stat .u { font-size: 10px; color: inherit; margin-left: 3px; }
 /* primary metrics: larger, accent-tinted */
-#meta .stats.primary .stat { padding: 9px 11px; background: #121c22;
-                             border-left: 2px solid var(--accent-dim); }
-#meta .stats.primary .k { color: var(--accent); }
-#meta .stats.primary .v { font-size: 18px; margin-top: 4px; }
+#meta .stats.primary .stat { padding: 7px 9px; background: #121c22;
+                             border-left: 3px solid var(--accent-dim); }
+#meta .stats.primary .k { color: var(--ink-dim); }   /* names stay muted/white-ish */
+#meta .stats.primary .v { font-size: 16px; margin-top: 3px; }
 /* each headline metric gets its own muted hue for at-a-glance recognition:
    range=teal (echoes the range rings), alt=sky blue, spd=amber, trk=violet */
-#meta .stat-range { border-left-color: #45a9ae; }
-#meta .stat-range .k { color: #59b6bb; }
-#meta .stat-alt   { border-left-color: #5f92cc; }
-#meta .stat-alt .k   { color: #77a3d6; }
-#meta .stat-spd   { border-left-color: #c99a55; }
-#meta .stat-spd .k   { color: #d3a869; }
-#meta .stat-trk   { border-left-color: #9683c6; }
-#meta .stat-trk .k   { color: #a695d0; }
+/* the value + unit carry the metric's colour (names stay muted), plus a
+   matching left stripe, for at-a-glance recognition */
+#meta .stats.primary .stat-range { border-left-color: #3fb8bd; }
+#meta .stats.primary .stat-range .v { color: #4cc8ce; }
+#meta .stats.primary .stat-alt { border-left-color: #5f9ce4; }
+#meta .stats.primary .stat-alt .v { color: #74aef0; }
+#meta .stats.primary .stat-spd { border-left-color: #d29a48; }
+#meta .stats.primary .stat-spd .v { color: #e8ad56; }
+#meta .stats.primary .stat-trk { border-left-color: #9f85da; }
+#meta .stats.primary .stat-trk .v { color: #b399ec; }
 /* secondary fit diagnostics: muted line */
 #meta .stats.secondary .stat { background: transparent; border-color: #172230;
                                padding: 5px 4px; }
 #meta .stats.secondary .k { font-size: 8px; }
 #meta .stats.secondary .v { font-size: 12px; color: var(--ink-dim); }
-#meta .placeholder { color: var(--ink-dim); font-size: 13px; }
+#meta .placeholder { color: var(--ink-dim); font-size: 13px;
+                     text-align: center; padding: 22px 4px; }
 
 /* ---- bottom bar: scrubber only ---------------------------------------- */
 #console {
@@ -184,12 +190,10 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 /* ---- mobile: map on top, full-width panel, stacked scrubber ----------- */
 @media (max-width: 760px) {
   #map { inset: 0 0 52% 0; }              /* map = top 48% */
-  #railToggle { display: none; }         /* panel is always open on mobile */
   #rail {
     top: 48%; left: 8px; right: 8px; bottom: 104px; width: auto;
     overflow-y: auto;                     /* the whole panel scrolls as one */
   }
-  #rail.closed { transform: none; opacity: 1; pointer-events: auto; }
   #list { flex: 0 0 auto; overflow: visible; }   /* no nested scroll area */
   #hud { font-size: 11px; gap: 4px 10px; }
   #plot { height: 188px; }

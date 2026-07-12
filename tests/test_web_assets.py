@@ -13,9 +13,9 @@ def test_index_loads_leaflet_and_app():
     assert "leaflet" in html.lower()          # map library present
     assert "app.js" in html
     assert 'id="map"' in html
-    # CDN scripts must carry Subresource Integrity
-    assert html.count("integrity=") >= 2
-    assert 'crossorigin="anonymous"' in html
+    # Leaflet is vendored locally so the dashboard loads offline (no CDN)
+    assert "vendor/leaflet/leaflet.js" in html
+    assert "unpkg.com" not in html
 
 
 def test_app_js_polls_state_and_has_color_logic():

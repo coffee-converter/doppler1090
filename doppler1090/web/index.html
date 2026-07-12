@@ -4,27 +4,24 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>doppler1090</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-        crossorigin="anonymous">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
   <!-- The map is the scope: it fills the viewport. Chrome floats over it. -->
   <div id="map"></div>
 
-  <!-- Toggle lives outside the rail so it stays clickable when the rail is
-       collapsed off-screen. -->
-  <button id="railToggle" title="toggle panel (Tab)">☰</button>
   <!-- Left bar: status header, aircraft list, and (when one is selected) its
-       square-ish measured-vs-predicted plot + stat grid. -->
-  <aside id="rail" class="open">
+       measured-vs-predicted plot + stats. -->
+  <aside id="rail">
     <header id="hud">
-      <span class="brand">doppler<b>1090</b></span>
-      <span class="stat" id="h-rx">--</span>
-      <span class="stat" id="h-uptime">--<span class="u">up</span></span>
-      <span class="stat" id="h-count">0<span class="u">ac</span></span>
-      <span class="stat" id="h-rate">0<span class="u">brst/s</span></span>
+      <span class="brand"></span>
+      <div class="statrow">
+        <span class="stat" id="h-rx">--</span>
+        <span class="stat" id="h-uptime">--<span class="u">up</span></span>
+        <span class="stat" id="h-count">0<span class="u">ac</span></span>
+        <span class="stat" id="h-rate">0<span class="u">brst/min</span></span>
+      </div>
     </header>
     <div id="list"></div>
     <div id="detail">
@@ -47,15 +44,13 @@
         <canvas id="timeline"></canvas>
         <div id="playhead"></div>
       </div>
-      <span class="badge live" id="h-mode">LIVE</span>
+      <span class="badge past" id="h-mode" style="display:none">PAST</span>
       <span id="clock">--:--:--</span>
       <button id="live" class="on" title="return to live (L)">LIVE</button>
     </div>
   </section>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-          integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-          crossorigin="anonymous"></script>
+  <script src="vendor/leaflet/leaflet.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
