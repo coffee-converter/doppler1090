@@ -191,9 +191,17 @@ class History:
                 break
         return state
 
-    def timeline(self, nbuckets=240, now=None):
+    # "Nice" bucket widths (seconds). The strip keeps a *fixed* seconds-per-bar
+    # so a burst always lands in the same bar regardless of how far `now` has
+    # advanced - bars only ever get appended on the right, never re-bucketed.
+    # Starts at 2 s (thin bars); steps up to the next nice value only once the
+    # session outgrows ``max_buckets`` bars - rare, and a one-time re-layout.
+    _NICE_WIDTHS = (2, 5, 10, 15, 30, 60, 120, 300, 600, 1800)
+
+    def timeline(self, max_buckets=1800, now=None):
         """Session extent plus a per-bucket burst count for the activity strip.
-        Returns {start, end, buckets:[int]} (empty when nothing is recorded)."""
+        Buckets are a fixed width anchored at the session start, so the bars
+        stay put as time advances. Returns {start, end, width, buckets:[int]}."""
         now = time.time() if now is None else now
         conn = self._read()
         try:
@@ -204,14 +212,19 @@ class History:
             ).fetchone()
             lo, hi = row if row else (None, None)
             if lo is None:
-                return {"start": now, "end": now, "buckets": [0] * nbuckets}
+                return {"start": now, "end": now, "width": self._NICE_WIDTHS[0],
+                        "buckets": [0]}
             hi = max(hi, now)
             span = (hi - lo) or 1.0
-            width = span / nbuckets
-            buckets = [0] * nbuckets
+            width = next((w for w in self._NICE_WIDTHS if span / w <= max_buckets),
+                         self._NICE_WIDTHS[-1])
+            nb = int(span // width) + 1
+            buckets = [0] * nb
             for (t,) in conn.execute("SELECT t FROM burst_log WHERE t > 0"):
-                i = int((t - lo) / width)
-                buckets[min(i, nbuckets - 1)] += 1
-            return {"start": lo, "end": hi, "buckets": buckets}
+                buckets[min(int((t - lo) / width), nb - 1)] += 1
+            # end is the right edge of the last (grid-aligned) bucket, so the
+            # client maps bar positions on the same fixed grid.
+            return {"start": lo, "end": lo + nb * width, "width": width,
+                    "buckets": buckets}
         finally:
             conn.close()
