@@ -26,7 +26,7 @@ function centerOnVisible(lat, lon, zoom) {
   const p = map.project([lat, lon], z);
   map.setView(map.unproject(p.subtract([dx, dy]), z), z);
 }
-centerOnVisible(41.978, -87.904, 9);   // O'Hare placeholder; recenters on receiver
+centerOnVisible(41.978, -87.904, 10);   // O'Hare placeholder; recenters on receiver
 const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
   { maxZoom: 19, detectRetina: true, attribution: '© OpenStreetMap' });
 const faaChart = name => L.tileLayer(
@@ -156,7 +156,7 @@ function render(state) {
     if (a.lat != null) {
       const label = a.flight || a.icao;
       if (!entry.marker) {
-        entry.marker = L.marker([a.lat, a.lon], { icon: planeIcon(a.track, isSel, false) })
+        entry.marker = L.marker([a.lat, a.lon], { icon: planeIcon(a.track, isSel, false, shapeFor(a)) })
           .addTo(map).on('click', () => select(a.icao))
           .bindTooltip(label, { permanent: false, direction: 'top',
                                 offset: [0, -16], opacity: 0.95 });
@@ -166,7 +166,7 @@ function render(state) {
         // Only rebuild the icon / tooltip when something actually changed —
         // rebinding every frame tears down an active hover and makes tooltips
         // flicker in and out.
-        setIconIfChanged(entry, a.track, isSel, false);
+        setIconIfChanged(entry, a.track, isSel, false, shapeFor(a));
         if (entry.label !== label) { entry.marker.setTooltipContent(label); entry.label = label; }
       }
       entry.marker.setOpacity(1);
@@ -188,7 +188,7 @@ function render(state) {
     // which quiet aircraft is selected; unselected ghosts fade as before.
     e.tracks.forEach(l => l.setStyle({ opacity: isSel ? 0.9 : op, weight: isSel ? 5 : 3 }));
     if (e.marker) {
-      setIconIfChanged(e, e.data ? e.data.track : 0, isSel, true);
+      setIconIfChanged(e, e.data ? e.data.track : 0, isSel, true, shapeFor(e.data || {}));
       e.marker.setOpacity(isSel ? 1 : Math.max(op, 0.25));
       e.marker.setZIndexOffset(isSel ? 1000 : 0);
     }
@@ -370,28 +370,61 @@ function drawSpark(c, a) {
 // Rebuild a marker's icon only when its visible state changes (heading rounded
 // to whole degrees, selection, ghosting). Recreating the divIcon DOM every
 // frame is what made hover tooltips flicker.
-function setIconIfChanged(entry, track, sel, ghost) {
-  const key = `${Math.round(track || 0)}|${sel ? 1 : 0}|${ghost ? 1 : 0}`;
-  if (entry.iconKey === key) return;
-  entry.iconKey = key;
-  entry.marker.setIcon(planeIcon(track, sel, ghost));
+// make/model -> [tar1090 shape name, scale], used only when the exact ICAO
+// type designator isn't known.
+function keywordShape(a) {
+  const t = ((a && a.make || '') + ' ' + (a && a.model || '')).toUpperCase();
+  const has = (...w) => w.some(x => t.includes(x));
+  if (has('HELICOPTER', 'SIKORSKY', 'ROBINSON', 'EUROCOPTER', 'BELL ', 'AS35',
+          'EC13', 'EC17', 'R44', 'R66', 'H125', 'H130')) return ['helicopter', 1];
+  if (has('747', 'A380', 'A340', 'A400', 'IL-96')) return ['heavy_4e', 1];
+  if (has('777', '787', 'A350', 'A330', '767', 'MD-11', 'A300', 'DC-10',
+          'L-1011')) return ['heavy_2e', 1.05];
+  if (has('CRJ', 'ERJ', 'EMB-1', 'E170', 'E175', 'E190', 'E195', 'RJ'))
+    return ['twin_small', 1];
+  if (has('737', 'A320', 'A319', 'A321', 'A318', 'A220', '757', '727',
+          'MD-8', 'MD-9', 'DC-9', 'BCS')) return ['airliner', 1];
+  if (has('ATR', 'DASH', 'DHC', 'DH8', 'SAAB', 'KING AIR', 'METRO'))
+    return ['twin_large', 0.95];
+  if (has('PC-12', 'C208', 'CARAVAN', 'TBM', 'PILATUS')) return ['single_turbo', 1];
+  if (has('CESSNA', 'PIPER', 'CIRRUS', 'MOONEY', 'DIAMOND', 'BEECH', 'C172',
+          'C182', 'C152', 'PA-', 'SR2', 'BONANZA')) return ['cessna', 1];
+  if (has('GULFSTREAM', 'LEARJET', 'CITATION', 'CHALLENGER', 'FALCON',
+          'HAWKER', 'GLOBAL', 'PHENOM')) return ['hi_perf', 0.95];
+  return ['airliner', 1];
 }
 
-function planeIcon(track, sel, ghost) {
-  const size = sel ? 38 : 28;
+// Prefer the exact ICAO type designator (tar1090 map), else the keyword fallback.
+function shapeFor(a) {
+  const m = (a && a.type && typeof AC_TYPE_ICONS !== 'undefined' &&
+             AC_TYPE_ICONS[a.type]) || keywordShape(a || {});
+  return { name: m[0], scale: m[1] || 1 };
+}
+
+function setIconIfChanged(entry, track, sel, ghost, info) {
+  const key = `${Math.round(track || 0)}|${sel ? 1 : 0}|${ghost ? 1 : 0}|` +
+    `${info ? info.name + info.scale : ''}`;
+  if (entry.iconKey === key) return;
+  entry.iconKey = key;
+  entry.marker.setIcon(planeIcon(track, sel, ghost, info));
+}
+
+function planeIcon(track, sel, ghost, info) {
+  const shp = (AC_SHAPES[info && info.name]) || AC_SHAPES.airliner;
+  const k = (sel ? 1.4 : 1.05) * (info ? info.scale : 1);   // display scale
+  const w = Math.round(shp.w * k), h = Math.round(shp.h * k);
   // Selection wins over ghosting: a selected-but-silent aircraft still goes
   // gold + enlarged, so you can tell which quiet plane is selected.
   const fill = sel ? '#ffd400' : ghost ? '#9aa6b5' : '#ffffff';
   const stroke = sel ? '#5a4500' : ghost ? '#2a3340' : '#11151c';
-  const rot = track || 0;
+  const rot = shp.noRotate ? 0 : (track || 0);
   const svg =
-    `<svg width="${size}" height="${size}" viewBox="0 0 24 24" ` +
+    `<svg width="${w}" height="${h}" viewBox="${shp.viewBox}" ` +
     `style="transform:rotate(${rot}deg);filter:drop-shadow(0 0 2px rgba(0,0,0,0.9))">` +
-    `<path d="M12 2 L13.4 9 L22 13.2 L22 15 L13.4 12.4 L12.9 19 L15.5 20.6 L15.5 22 ` +
-    `L12 21 L8.5 22 L8.5 20.6 L11.1 19 L10.6 12.4 L2 15 L2 13.2 L10.6 9 Z" ` +
-    `fill="${fill}" stroke="${stroke}" stroke-width="1"/></svg>`;
+    `<path d="${shp.path}" fill="${fill}" stroke="${stroke}" ` +
+    `stroke-width="${shp.strokeScale || 16}"/></svg>`;
   return L.divIcon({ html: svg, className: 'plane-icon',
-                     iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
+                     iconSize: [w, h], iconAnchor: [w / 2, h / 2] });
 }
 
 function select(icao) {

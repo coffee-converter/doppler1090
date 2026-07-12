@@ -40,7 +40,11 @@ class TypeStore:
         self._conn = sqlite3.connect(path, check_same_thread=False)
         self._conn.execute(
             "CREATE TABLE IF NOT EXISTS type_cache (icao TEXT PRIMARY KEY, "
-            "make TEXT, model TEXT, reg TEXT, source TEXT, ts REAL)")
+            "make TEXT, model TEXT, reg TEXT, type TEXT, source TEXT, ts REAL)")
+        try:              # add the ICAO type column to a pre-existing cache
+            self._conn.execute("ALTER TABLE type_cache ADD COLUMN type TEXT")
+        except sqlite3.OperationalError:
+            pass
         self._conn.execute(
             "CREATE TABLE IF NOT EXISTS faa (icao TEXT PRIMARY KEY, "
             "reg TEXT, make TEXT, model TEXT)")
@@ -49,11 +53,11 @@ class TypeStore:
             "url TEXT, link TEXT, by TEXT, source TEXT, ts REAL)")
         self._conn.commit()
         self._lock = threading.Lock()   # guards all _conn access
-        self._mem = {}                  # icao -> {make,model,reg} | None (miss)
-        for icao, make, model, reg, source in self._conn.execute(
-                "SELECT icao, make, model, reg, source FROM type_cache"):
+        self._mem = {}                  # icao -> {make,model,reg,type} | None
+        for icao, make, model, reg, typ, source in self._conn.execute(
+                "SELECT icao, make, model, reg, type, source FROM type_cache"):
             self._mem[icao] = None if source == "none" else {
-                "make": make, "model": model, "reg": reg}
+                "make": make, "model": model, "reg": reg, "type": typ}
         self._photo_mem = {}            # reg -> {url,link,by} | None (miss)
         for reg, url, link, by, source in self._conn.execute(
                 "SELECT reg, url, link, by, source FROM photo_cache"):
@@ -137,7 +141,7 @@ class TypeStore:
         if isinstance(resp, dict) and resp.get("aircraft"):
             ac = resp["aircraft"]
             return {"make": ac.get("manufacturer"), "model": ac.get("type"),
-                    "reg": ac.get("registration")}
+                    "reg": ac.get("registration"), "type": ac.get("icao_type")}
         return None                      # "unknown aircraft"
 
     def _faa_get(self, icao):
@@ -145,15 +149,16 @@ class TypeStore:
             r = self._conn.execute(
                 "SELECT reg, make, model FROM faa WHERE icao = ?", (icao,)
             ).fetchone()
-        return {"reg": r[0], "make": r[1], "model": r[2]} if r else None
+        return {"reg": r[0], "make": r[1], "model": r[2], "type": None} if r else None
 
     def _store(self, icao, info, source):
         with self._lock:
             self._conn.execute(
                 "INSERT OR REPLACE INTO type_cache "
-                "(icao, make, model, reg, source, ts) VALUES (?,?,?,?,?,?)",
+                "(icao, make, model, reg, type, source, ts) VALUES (?,?,?,?,?,?,?)",
                 (icao, info and info["make"], info and info["model"],
-                 info and info["reg"], source, time.time()))
+                 info and info["reg"], info and info.get("type"), source,
+                 time.time()))
             self._conn.commit()
 
     def _resolve_photo(self, reg):
