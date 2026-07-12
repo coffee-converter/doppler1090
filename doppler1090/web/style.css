@@ -1,30 +1,178 @@
-html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; }
-body { display: flex; }
-#map { flex: 1 1 70%; height: 100vh; background: #0c0f14; }
-#panel { flex: 0 0 30%; max-width: 460px; padding: 12px; overflow-y: auto;
-         background: #11151c; color: #e6e6e6; box-sizing: border-box; }
-#panel h2 { margin: 0 0 8px; font-size: 16px; }
-#list button { display: block; width: 100%; text-align: left; margin: 2px 0;
-               padding: 6px 8px; background: #1d2530; color: #e6e6e6;
-               border: 1px solid #2a3543; border-radius: 4px; cursor: pointer; }
-#list button.sel { background: #2d6cdf; border-color: #2d6cdf; }
-#list button.ghost { opacity: 0.5; font-style: italic; }
-#list button.ghost.sel { opacity: 1; }
-#plot { display: block; width: 100%; height: 300px; background: #0c0f14;
-        border: 1px solid #2a3543; border-radius: 6px; margin-top: 8px; }
-#meta { margin-top: 12px; }
-#meta .callsign { font-size: 20px; font-weight: 600; letter-spacing: .4px;
-                  color: #f0f3f7; }
-#meta .sub { font-size: 12px; color: #6b7684; margin-top: 1px; }
-#meta .stale { font-size: 12px; color: #c9a227; margin-top: 4px; letter-spacing: .3px; }
-#meta .placeholder { font-size: 13px; color: #6b7684; }
+/* doppler1090 — "instrument" dashboard.
+   Fullscreen map scope; a left bar carries the aircraft list and the selected
+   aircraft's plot + stats; a thin bottom bar is nothing but the time-travel
+   scrubber. Dark-only by design (a signals instrument is a dark scope). */
+
+:root {
+  --bg:        #05070b;
+  --panel:     rgba(12, 16, 22, 0.86);
+  --edge:      #1c2634;
+  --edge-lit:  #2b3a4f;
+  --ink:       #e6edf5;
+  --ink-dim:   #7c8a9c;
+  --accent:    #35d0d6;   /* phosphor cyan — chrome/interactive          */
+  --accent-dim:#1c6f73;
+  --gold:      #ffd400;   /* receiver / selection                        */
+  --measured:  #7fb0ff;
+  --predicted: #54c07a;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  font-family: system-ui, sans-serif;
+}
+
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); }
+#map { position: fixed; inset: 0; background: var(--bg); }
+.leaflet-top.leaflet-right { margin-top: 8px; }
+.plane-icon, .ring-label { background: none; border: none; }
+.stat, .badge, #clock, #meta .stat .v, #list .conf { font-variant-numeric: tabular-nums; }
+
+/* ---- top-left health strip -------------------------------------------- */
+#hud {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px;
+  padding: 10px 11px; border-bottom: 1px solid var(--edge);
+  font-size: 12px; letter-spacing: .3px;
+}
+#hud .brand { font-weight: 600; letter-spacing: .5px; margin-right: 2px; }
+#hud .brand b { color: var(--accent); font-weight: 600; }
+#hud .stat { font-family: var(--mono); }
+#hud .stat .u { color: var(--ink-dim); margin-left: 3px; font-size: 10px; }
+/* live/past badge — lives in the bottom scrubber bar */
+.badge { padding: 2px 8px; border-radius: 5px; font-size: 11px;
+         font-weight: 700; letter-spacing: .8px; }
+.badge.live { background: rgba(53,208,214,.15); color: var(--accent);
+              border: 1px solid var(--accent-dim); }
+.badge.past { background: rgba(255,212,0,.14); color: var(--gold);
+              border: 1px solid #6b5a00; }
+
+/* ---- left bar --------------------------------------------------------- */
+#rail {
+  position: fixed; top: 10px; left: 10px; bottom: 84px; z-index: 1000;
+  width: 300px; display: flex; flex-direction: column;
+  background: var(--panel); border: 1px solid var(--edge); border-radius: 9px;
+  backdrop-filter: blur(9px); -webkit-backdrop-filter: blur(9px);
+  transition: transform .18s ease, opacity .18s ease;
+}
+#rail.closed { transform: translateX(-320px); opacity: 0; pointer-events: none; }
+/* Fixed (not a rail child) so it stays put — and clickable — when the rail
+   slides away. Sits at the rail's edge when open, at the margin when closed. */
+#railToggle {
+  position: fixed; z-index: 1001; top: 14px; left: 318px;
+  width: 30px; height: 30px; border-radius: 7px;
+  background: var(--panel); border: 1px solid var(--edge);
+  color: var(--accent); font-size: 15px; cursor: pointer;
+  backdrop-filter: blur(9px); -webkit-backdrop-filter: blur(9px);
+  transition: left .18s ease;
+}
+#railToggle.collapsed { left: 10px; }
+/* don't grow to fill: cards stay top-aligned so the selected plot sits right
+   under them (list still shrinks + scrolls when the aircraft count is large) */
+#list { flex: 0 1 auto; overflow-y: auto; padding: 8px; min-height: 40px; }
+#list .row {
+  display: flex; align-items: center; gap: 10px; width: 100%; box-sizing: border-box;
+  margin: 3px 0; padding: 6px 12px 6px 9px; min-width: 0; overflow: hidden;
+  background: #10161e; color: var(--ink); border: 1px solid var(--edge);
+  border-left: 3px solid var(--edge-lit); border-radius: 6px; cursor: pointer;
+}
+#list .row:hover { border-color: var(--edge-lit); background: #131b25; }
+#list .row.sel { border-color: var(--accent); border-left-color: var(--accent);
+                 background: rgba(53,208,214,.08); }
+#list .row.ghost { opacity: .5; font-style: italic; }
+#list .row.ghost.sel { opacity: 1; }
+/* info stays at its natural width; the graph fills the rest, starting right
+   next to the tail number instead of floating at the far edge */
+#list .info { flex: 0 0 auto; }
+#list .cs { display: block; font-weight: 600; font-size: 13px; letter-spacing: .3px;
+            white-space: nowrap; }
+#list .conf { display: block; font-family: var(--mono); font-size: 11px;
+              color: var(--ink-dim); margin-top: 2px; white-space: nowrap; }
+/* basis 0 so it grows from nothing into the leftover space — never widens the
+   row past the panel no matter the canvas's intrinsic size */
+#list .spark { flex: 1 1 0; min-width: 0; width: 0; height: 30px; }
+
+/* silent aircraft collapse to pills (flight/tail only); clicking one selects
+   it, which expands it back into a full card above */
+#list .pillbox { display: flex; flex-wrap: wrap; gap: 5px;
+                 padding: 8px 2px 2px; margin-top: 4px;
+                 border-top: 1px solid var(--edge); }
+#list .pill { font-size: 11px; font-weight: 600; color: var(--ink-dim);
+              background: #10161e; border: 1px solid var(--edge);
+              border-radius: 999px; padding: 3px 9px; cursor: pointer;
+              white-space: nowrap; font-style: italic; }
+#list .pill:hover { border-color: var(--edge-lit); color: var(--ink); }
+
+/* selected-aircraft detail: pinned below the list */
+#detail { display: none; flex: 0 0 auto; padding: 10px 8px 12px;
+          border-top: 1px solid var(--edge); }
+#rail.selected #detail { display: block; }
+/* legend above the plot (top-right) so it never overlaps the data */
+#plotlegend { display: flex; justify-content: flex-end; gap: 14px;
+              font-size: 11px; color: var(--ink-dim); margin-bottom: 2px; }
+#plotlegend .lg { display: inline-flex; align-items: center; gap: 5px; }
+#plotlegend .lg::before { content: ''; }
+#plotlegend .measured::before { width: 7px; height: 7px; border-radius: 50%;
+                                background: var(--measured); }
+#plotlegend .predicted::before { width: 12px; height: 0;
+                                 border-top: 2px solid var(--predicted); }
+#plot { display: block; width: 100%; height: 224px; background: transparent; }
+#meta .callsign { font-size: 18px; font-weight: 600; letter-spacing: .4px; }
+#meta .sub { font-size: 12px; color: var(--ink-dim); margin-top: 1px;
+             font-family: var(--mono); }
+#meta .stale { font-size: 12px; color: var(--gold); margin-top: 4px; }
 #meta .stats { display: grid; grid-template-columns: repeat(4, 1fr);
-               gap: 6px; margin-top: 12px; }
-#meta .stat { background: #151b24; border: 1px solid #222c3a;
-              border-radius: 6px; padding: 7px 9px; }
-#meta .stat .k { display: block; font-size: 10px; text-transform: uppercase;
-                 letter-spacing: .6px; color: #6b7684; }
-#meta .stat .v { display: block; font-size: 15px; color: #e6e6e6;
-                 margin-top: 3px; font-variant-numeric: tabular-nums; }
-#meta .stat .u { font-size: 11px; color: #6b7684; margin-left: 2px; }
-.plane-icon { background: none; border: none; }
+               gap: 6px; margin-top: 10px; }
+#meta .stat { background: #10161e; border: 1px solid var(--edge);
+              border-radius: 6px; padding: 6px 7px; min-width: 0; }
+#meta .stat .k { display: block; font-size: 9px; text-transform: uppercase;
+                 letter-spacing: .6px; color: var(--ink-dim); }
+#meta .stat .v { display: block; font-size: 14px; color: var(--ink);
+                 margin-top: 3px; font-family: var(--mono);
+                 white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#meta .stat .u { font-size: 10px; color: var(--ink-dim); margin-left: 2px; }
+#meta .placeholder { color: var(--ink-dim); font-size: 13px; }
+
+/* ---- bottom bar: scrubber only ---------------------------------------- */
+#console {
+  position: fixed; left: 10px; right: 10px; bottom: 10px; z-index: 1000;
+  background: var(--panel); border: 1px solid var(--edge); border-radius: 11px;
+  backdrop-filter: blur(11px); -webkit-backdrop-filter: blur(11px);
+}
+#transport { display: flex; align-items: center; gap: 10px; padding: 10px 14px; }
+#transport button {
+  background: #121a24; color: var(--ink); border: 1px solid var(--edge-lit);
+  border-radius: 6px; height: 30px; min-width: 32px; padding: 0 9px;
+  cursor: pointer; font-size: 13px; font-family: var(--mono);
+}
+#transport button:hover { border-color: var(--accent-dim); color: var(--accent); }
+#transport #live.on { background: rgba(53,208,214,.16); color: var(--accent);
+                      border-color: var(--accent); font-weight: 700; }
+#scrub { position: relative; flex: 1; height: 34px; }
+#timeline { display: block; width: 100%; height: 34px; cursor: pointer; }
+#playhead { position: absolute; top: -2px; width: 2px; height: 38px;
+            background: var(--accent); box-shadow: 0 0 6px var(--accent);
+            pointer-events: none; left: 100%; }
+#console.past #playhead { background: var(--gold); box-shadow: 0 0 6px var(--gold); }
+#clock { font-family: var(--mono); font-size: 12px; color: var(--ink-dim);
+         min-width: 132px; text-align: right; white-space: nowrap; }
+#console.past #clock { color: var(--gold); }
+#transport.norecord #scrub, #transport.norecord #playhead,
+#transport.norecord #toStart, #transport.norecord #speed,
+#transport.norecord #playPause { opacity: .35; pointer-events: none; }
+
+/* ---- mobile: map on top, full-width panel, stacked scrubber ----------- */
+@media (max-width: 760px) {
+  #map { inset: 0 0 52% 0; }              /* map = top 48% */
+  #railToggle { display: none; }         /* panel is always open on mobile */
+  #rail {
+    top: 48%; left: 8px; right: 8px; bottom: 104px; width: auto;
+    overflow-y: auto;                     /* the whole panel scrolls as one */
+  }
+  #rail.closed { transform: none; opacity: 1; pointer-events: auto; }
+  #list { flex: 0 0 auto; overflow: visible; }   /* no nested scroll area */
+  #hud { font-size: 11px; gap: 4px 10px; }
+  #plot { height: 188px; }
+
+  #console { left: 8px; right: 8px; bottom: 8px; }
+  #transport { flex-wrap: wrap; gap: 8px 6px; }
+  #scrub { order: -1; flex-basis: 100%; }        /* timeline on its own row */
+  #transport button { min-width: 30px; padding: 0 7px; }
+  #clock { min-width: 0; flex: 1; }              /* fills the controls row */
+}

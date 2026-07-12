@@ -10,13 +10,49 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
+  <!-- The map is the scope: it fills the viewport. Chrome floats over it. -->
   <div id="map"></div>
-  <div id="panel">
-    <h2>doppler1090</h2>
+
+  <!-- Toggle lives outside the rail so it stays clickable when the rail is
+       collapsed off-screen. -->
+  <button id="railToggle" title="toggle panel (Tab)">☰</button>
+  <!-- Left bar: status header, aircraft list, and (when one is selected) its
+       square-ish measured-vs-predicted plot + stat grid. -->
+  <aside id="rail" class="open">
+    <header id="hud">
+      <span class="brand">doppler<b>1090</b></span>
+      <span class="stat" id="h-rx">--</span>
+      <span class="stat" id="h-uptime">--<span class="u">up</span></span>
+      <span class="stat" id="h-count">0<span class="u">ac</span></span>
+      <span class="stat" id="h-rate">0<span class="u">brst/s</span></span>
+    </header>
     <div id="list"></div>
-    <canvas id="plot" width="380" height="260"></canvas>
-    <div id="meta"></div>
-  </div>
+    <div id="detail">
+      <div id="plotlegend">
+        <span class="lg measured">measured</span>
+        <span class="lg predicted">predicted</span>
+      </div>
+      <canvas id="plot"></canvas>
+      <div id="meta"></div>
+    </div>
+  </aside>
+
+  <!-- Bottom bar: nothing but the time-travel scrubber + transport. -->
+  <section id="console">
+    <div id="transport">
+      <button id="toStart" title="jump to session start">⏮</button>
+      <button id="playPause" title="play / pause (Space)">▶</button>
+      <button id="speed" title="playback speed">1&times;</button>
+      <div id="scrub">
+        <canvas id="timeline"></canvas>
+        <div id="playhead"></div>
+      </div>
+      <span class="badge live" id="h-mode">LIVE</span>
+      <span id="clock">--:--:--</span>
+      <button id="live" class="on" title="return to live (L)">LIVE</button>
+    </div>
+  </section>
+
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
           integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
           crossorigin="anonymous"></script>
