@@ -58,6 +58,7 @@ let serverNow = 0;            // most recent server_time seen
 let mode = 'live';            // 'live' | 'past'
 let viewTime = 0;             // epoch of the current past frame
 let playing = false, speed = 1;
+const SPEEDS = [1, 2, 5, 10, 20];   // playback multipliers cycled by the button
 let tl = null;                // { start, end, buckets, recording }
 let inflight = false;         // guards overlapping /api/state fetches
 
@@ -588,7 +589,7 @@ scrub.addEventListener('pointerup', e => { scrubbing = false; });
 
 // ---- time-travel machine -------------------------------------------------
 function goLive() {
-  mode = 'live'; playing = false;
+  mode = 'live'; playing = false; speed = 1;   // returning to live resets speed
   document.getElementById('console').classList.remove('past');
   updateTransport(); positionPlayhead();
   fetchState(null);
@@ -630,7 +631,7 @@ function updateTransport() {
 document.getElementById('live').onclick = goLive;
 document.getElementById('toStart').onclick = () => { if (tl) seek(tl.start); };
 document.getElementById('speed').onclick = () => {
-  speed = speed === 1 ? 2 : speed === 2 ? 4 : 1; updateTransport();
+  speed = SPEEDS[(SPEEDS.indexOf(speed) + 1) % SPEEDS.length]; updateTransport();
 };
 document.getElementById('playPause').onclick = () => {
   if (!tl || !tl.recording) return;
