@@ -89,6 +89,26 @@ function dopColor(hz) {
   return `rgb(255,${Math.round(255*(1-t))},${Math.round(255*(1-t))})`;
 }
 
+// Paint one trail segment as a Doppler gradient. Predicted Doppler is a smooth
+// function of position, so we subdivide the segment and colour each slice by the
+// value interpolated between the two endpoints. This makes the blue->white->red
+// transition land in the right place even on a long, coarsely-sampled segment
+// (e.g. across an overhead pass, or a position gap) where a single endpoint
+// colour would paint the whole thing one side of the flip. Short/flat segments
+// collapse to a single slice, so this stays cheap for the common case.
+function addTrailSegment(p0, p1, weight, sink) {
+  const steps = Math.max(1, Math.min(12, Math.round(Math.abs(p1[2] - p0[2]) / 40)));
+  for (let k = 0; k < steps; k++) {
+    const f0 = k / steps, f1 = (k + 1) / steps, fm = (f0 + f1) / 2;
+    const seg = L.polyline([
+      [p0[0] + (p1[0] - p0[0]) * f0, p0[1] + (p1[1] - p0[1]) * f0],
+      [p0[0] + (p1[0] - p0[0]) * f1, p0[1] + (p1[1] - p0[1]) * f1]],
+      { color: dopColor(p0[2] + (p1[2] - p0[2]) * fm), weight, opacity: 0.9,
+        lineCap: 'round' });
+    seg.addTo(map); sink.push(seg);
+  }
+}
+
 // Colour the "doppler1090" logo per-character as a real Doppler pass at ~10 mi
 // closest approach: the radial-velocity S-curve f_d ∝ -x/√(d²+x²) sampled across
 // the letters, run through the same dopColor scale (blue -> white -> red).
@@ -149,9 +169,7 @@ function render(state) {
     const isSel = a.icao === selected;
     const g = a.ground_track;
     for (let i = 1; i < g.length; i++) {
-      const seg = L.polyline([[g[i-1][0], g[i-1][1]], [g[i][0], g[i][1]]],
-        { color: dopColor(g[i][2]), weight: isSel ? 7 : 4, opacity: 0.9 });
-      seg.addTo(map); entry.tracks.push(seg);
+      addTrailSegment(g[i-1], g[i], isSel ? 7 : 4, entry.tracks);
     }
     if (a.lat != null) {
       const label = a.flight || a.icao;
@@ -409,10 +427,45 @@ function setIconIfChanged(entry, track, sel, ghost, info) {
   entry.marker.setIcon(planeIcon(track, sel, ghost, info));
 }
 
+// The rotation pivot must be the plane's own centre, not the viewBox centre:
+// a few shapes (airliner, cessna, glider) draw the silhouette slightly off
+// centre, so rotating about the box centre swings the plane off the anchor by
+// a few px in a heading-dependent direction, detaching it from its trail.
+// Measure each path's bounding box once (via getBBox) and cache by path.
+const _shapeCtr = {};
+let _measSvg = null;
+function shapeCenter(shp) {
+  if (shp.path in _shapeCtr) return _shapeCtr[shp.path];
+  const vb = shp.viewBox.split(/\s+/).map(Number);
+  let c = { cx: vb[0] + vb[2] / 2, cy: vb[1] + vb[3] / 2 };   // viewBox-centre fallback
+  try {
+    if (!_measSvg) {
+      _measSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      _measSvg.setAttribute('style',
+        'position:absolute;left:-9999px;width:0;height:0;overflow:hidden');
+      document.body.appendChild(_measSvg);
+    }
+    const p = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    p.setAttribute('d', shp.path);
+    _measSvg.appendChild(p);
+    const b = p.getBBox();
+    _measSvg.removeChild(p);
+    c = { cx: b.x + b.width / 2, cy: b.y + b.height / 2 };
+  } catch (e) { /* keep viewBox-centre fallback */ }
+  _shapeCtr[shp.path] = c;
+  return c;
+}
+
 function planeIcon(track, sel, ghost, info) {
   const shp = (AC_SHAPES[info && info.name]) || AC_SHAPES.airliner;
-  const k = (sel ? 1.4 : 1.05) * (info ? info.scale : 1);   // display scale
+  const k = (sel ? 1.6 : 1.2) * (info ? info.scale : 1);   // display scale
   const w = Math.round(shp.w * k), h = Math.round(shp.h * k);
+  // Anchor + rotate about the silhouette's true centre (see shapeCenter). For
+  // the ~centred majority this is the box centre; off-centre shapes get pinned.
+  const vb = shp.viewBox.split(/\s+/).map(Number);
+  const c = shapeCenter(shp);
+  let ax = (c.cx - vb[0]) / vb[2] * w, ay = (c.cy - vb[1]) / vb[3] * h;
+  if (!Number.isFinite(ax) || !Number.isFinite(ay)) { ax = w / 2; ay = h / 2; }
   // Selection wins over ghosting: a selected-but-silent aircraft still goes
   // gold + enlarged, so you can tell which quiet plane is selected.
   const fill = sel ? '#ffd400' : ghost ? '#9aa6b5' : '#ffffff';
@@ -420,11 +473,15 @@ function planeIcon(track, sel, ghost, info) {
   const rot = shp.noRotate ? 0 : (track || 0);
   const svg =
     `<svg width="${w}" height="${h}" viewBox="${shp.viewBox}" ` +
-    `style="transform:rotate(${rot}deg);filter:drop-shadow(0 0 2px rgba(0,0,0,0.9))">` +
+    `style="transform:rotate(${rot}deg);transform-origin:${ax}px ${ay}px;` +
+    `filter:drop-shadow(0 0 2px rgba(0,0,0,0.9))">` +
+    // strokeScale is the outline weight in viewBox units. The small silhouette
+    // shapes (~20 wide) omit it; default to a hairline 1 - the old default of
+    // 16 was sized for the big-viewBox airliners and floods small shapes solid.
     `<path d="${shp.path}" fill="${fill}" stroke="${stroke}" ` +
-    `stroke-width="${shp.strokeScale || 16}"/></svg>`;
+    `stroke-width="${shp.strokeScale || 1}"/></svg>`;
   return L.divIcon({ html: svg, className: 'plane-icon',
-                     iconSize: [w, h], iconAnchor: [w / 2, h / 2] });
+                     iconSize: [w, h], iconAnchor: [ax, ay] });
 }
 
 function select(icao) {
