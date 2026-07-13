@@ -20,6 +20,7 @@ class Sample:
     lat: float
     lon: float
     track: float
+    signal: float = 0.0    # RMS amplitude of this burst (0..~1.4 full-scale)
 
 
 @dataclass
@@ -74,13 +75,13 @@ class TrackStore:
     def latest(self, icao):
         return dict(self._state.get(icao, {}))
 
-    def _inject(self, icao, t, f_offset, doppler_pred, lat, lon, track):
+    def _inject(self, icao, t, f_offset, doppler_pred, lat, lon, track, signal=0.0):
         self._samples.setdefault(icao, []).append(
-            Sample(t, f_offset, doppler_pred, lat, lon, track))
+            Sample(t, f_offset, doppler_pred, lat, lon, track, signal))
         self._last_seen[icao] = t
         if self.recorder:
             self.recorder.log_burst(t, icao, f_offset, doppler_pred,
-                                    lat, lon, track)
+                                    lat, lon, track, signal)
 
     def prune(self, now):
         """Drop aircraft not heard from in more than max_age seconds."""
@@ -90,14 +91,14 @@ class TrackStore:
             self._state.pop(icao, None)
             self._last_seen.pop(icao, None)
 
-    def add_burst(self, icao, t, f_offset, rx_llh):
+    def add_burst(self, icao, t, f_offset, rx_llh, signal=0.0):
         s = self._state.get(icao, {})
         if not all(k in s for k in ("lat", "lon", "alt", "speed", "track", "vrate")):
             return
         vr = radial_velocity(rx_llh, (s["lat"], s["lon"], s["alt"]),
                              s["speed"], s["track"], s["vrate"])
         self._inject(icao, t, f_offset, predicted_doppler(vr),
-                     s["lat"], s["lon"], s["track"])
+                     s["lat"], s["lon"], s["track"], signal)
 
     def icaos(self):
         return list(self._samples.keys())

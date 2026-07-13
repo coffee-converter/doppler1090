@@ -45,7 +45,8 @@ CREATE TABLE IF NOT EXISTS burst_log (
     doppler_pred REAL,
     lat          REAL,
     lon          REAL,
-    track        REAL
+    track        REAL,
+    signal       REAL
 );
 CREATE INDEX IF NOT EXISTS ix_state_icao_t ON state_log (icao, t);
 CREATE INDEX IF NOT EXISTS ix_state_t      ON state_log (t);
@@ -84,8 +85,9 @@ class Recorder:
         self._states.append((t, icao, lat, lon, alt, speed_kt, track,
                              vrate_fpm, flight))
 
-    def log_burst(self, t, icao, f_offset, doppler_pred, lat, lon, track):
-        self._bursts.append((t, icao, f_offset, doppler_pred, lat, lon, track))
+    def log_burst(self, t, icao, f_offset, doppler_pred, lat, lon, track, signal=0.0):
+        self._bursts.append((t, icao, f_offset, doppler_pred, lat, lon, track,
+                             signal))
 
     def flush(self):
         if not self._states and not self._bursts:
@@ -99,7 +101,7 @@ class Recorder:
             if self._bursts:
                 self._conn.executemany(
                     "INSERT INTO burst_log (t, icao, f_offset, doppler_pred, "
-                    "lat, lon, track) VALUES (?,?,?,?,?,?,?)",
+                    "lat, lon, track, signal) VALUES (?,?,?,?,?,?,?,?)",
                     self._bursts)
         self._states.clear()
         self._bursts.clear()
@@ -164,8 +166,8 @@ class History:
         gap longer than max_age (so a previous pass never pollutes the fit -
         exactly what live prune() does)."""
         rows = conn.execute(
-            "SELECT t, f_offset, doppler_pred, lat, lon, track FROM burst_log "
-            "WHERE icao = ? AND t > ? AND t <= ? ORDER BY t",
+            "SELECT t, f_offset, doppler_pred, lat, lon, track, signal FROM "
+            "burst_log WHERE icao = ? AND t > ? AND t <= ? ORDER BY t",
             (icao, at - self.lookback, at)).fetchall()
         if not rows:
             return []
@@ -173,8 +175,8 @@ class History:
         for i in range(1, len(rows)):
             if rows[i][0] - rows[i - 1][0] > self.max_age:
                 start = i  # gap: everything before restarts a fresh pass
-        return [Sample(t, f, d, lat, lon, trk)
-                for (t, f, d, lat, lon, trk) in rows[start:]]
+        return [Sample(t, f, d, lat, lon, trk, sig or 0.0)
+                for (t, f, d, lat, lon, trk, sig) in rows[start:]]
 
     def _latest_state(self, conn, icao, at):
         """Newest-non-null-wins across recent state_log rows - reproduces how
