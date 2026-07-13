@@ -17,10 +17,20 @@
     <header id="hud">
       <span class="brand"></span>
       <div class="statrow">
+        <span class="stat sdr" id="h-sdr" title="SDR status"><span class="dot"></span><span id="h-sdr-txt">connecting…</span></span>
         <span class="stat" id="h-rx">--</span>
         <span class="stat" id="h-uptime">--<span class="u">up</span></span>
         <span class="stat" id="h-count">0<span class="u">ac</span></span>
-        <span class="stat" id="h-rate">0<span class="u">brst/min</span></span>
+        <span class="stat" id="h-rate">0<span class="u">burst/min</span></span>
+      </div>
+      <div class="record" id="h-record"
+           title="all-time records — cycling through the extremes this receiver has seen">
+        <div class="rec-top">
+          <span class="rec-label">records</span>
+          <span class="rec-val">–</span>
+          <span class="rec-date"></span>
+        </div>
+        <div class="rec-who">waiting for aircraft…</div>
       </div>
     </header>
     <div id="list"></div>

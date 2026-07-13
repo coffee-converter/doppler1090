@@ -34,6 +34,41 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
                 font-size: 11px; letter-spacing: .3px; }
 #hud .stat { font-family: var(--mono); color: var(--ink-dim); }
 #hud .stat .u { margin-left: 3px; font-size: 10px; }
+/* SDR status light: colour flows from the state class onto both the dot (via
+   currentColor) and the label. green = decoding, amber = connected but quiet,
+   red = dongle gone / server unreachable. */
+#hud .sdr { display: inline-flex; align-items: center; gap: 5px; }
+#hud .sdr .dot { width: 8px; height: 8px; border-radius: 50%;
+                 background: currentColor; box-shadow: 0 0 6px currentColor; }
+#hud .sdr.ok   { color: #42d778; }
+#hud .sdr.idle { color: #e8ad56; }
+#hud .sdr.down { color: #ef4d4d; }
+/* decode rate in the same teal as the activity histogram below it - both are
+   burst rate, so the number and the bars read as one metric. */
+#hud #h-rate { color: #35d0d6; }
+#hud #h-rate .u { opacity: .7; }
+/* all-time highs strip: muted labels, warm "high-score" gold values. */
+/* all-time record: one compact card that fades between records every few
+   seconds - value on top (coloured by metric family), the flight/tail/type/time
+   that set it below. */
+#hud .record { margin-top: 8px; font-family: var(--mono);
+               transition: opacity .2s ease; min-height: 30px; }
+/* top row: name, value, then date pushed to the right. */
+#hud .rec-top { display: flex; align-items: baseline; gap: 8px; }
+#hud .rec-label { font-size: 10px; text-transform: uppercase; letter-spacing: .5px;
+                  font-weight: 600; color: #c3cdd8; }
+#hud .rec-val { font-weight: 700; font-size: 13px; white-space: nowrap;
+                color: var(--ink-dim); }   /* muted until a metric class colours it */
+#hud .rec-date { margin-left: auto; font-size: 9px; color: var(--ink-dim);
+                 white-space: nowrap; }
+#hud .rec-who { font-size: 10px; color: #9aa6b5; margin-top: 3px;
+                white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#hud .record.spd .rec-val { color: #e8ad56; }   /* speed = amber */
+#hud .record.alt .rec-val { color: #74aef0; }   /* altitude = blue */
+#hud .record.vrt .rec-val { color: #b399ec; }   /* vertical rate = violet */
+#hud .record.rng .rec-val { color: #4cc8ce; }   /* range = teal */
+#hud .record.sig .rec-val { color: #5fd07a; }   /* signal = green */
+#hud .record.dop .rec-val { color: #db8ac9; }   /* Doppler swing = magenta */
 /* live/past badge — lives in the bottom scrubber bar */
 .badge { padding: 2px 8px; border-radius: 5px; font-size: 11px;
          font-weight: 700; letter-spacing: .8px; }
@@ -124,7 +159,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #meta .stale { font-size: 12px; color: var(--gold); margin-top: 4px; }
 #meta .stats { display: grid; gap: 6px; margin-top: 10px; }
 #meta .stats.primary { grid-template-columns: repeat(2, 1fr); }
-#meta .stats.secondary { grid-template-columns: repeat(4, 1fr); margin-top: 6px; }
+#meta .stats.secondary { grid-template-columns: repeat(5, 1fr); margin-top: 6px; }
 #meta .stat { background: #10161e; border: 1px solid var(--edge);
               border-radius: 6px; padding: 6px 5px; min-width: 0; }
 #meta .stat .k { display: block; font-size: 9px; text-transform: uppercase;

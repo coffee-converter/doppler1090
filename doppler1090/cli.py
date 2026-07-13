@@ -13,6 +13,7 @@ from .decode import _chip_indices, bits_to_hex
 from .track import TrackStore
 from .history import Recorder, History
 from . import aircraft
+from .records import Records
 from .terminal import build_rows, build_table
 from . import server
 
@@ -28,7 +29,7 @@ def _phase_offsets(n):
 
 
 def process_chunk(t, iq, fs, rx_llh, store, burst_len, max_fix=1, phase_search=1,
-                  threshold=2.0):
+                  threshold=2.0, health=None):
     store.prune(t)  # drop aircraft not heard from within max_age
     mag = magnitude(iq)
     offs = detect_preambles(mag, fs, threshold_factor=threshold)
@@ -71,6 +72,8 @@ def process_chunk(t, iq, fs, rx_llh, store, burst_len, max_fix=1, phase_search=1
                     break
         if dec is None:
             continue
+        if health is not None:
+            health.mark_decode()        # a real ADS-B frame got through
         sl = iq[o:o + burst_len]
         msl = mag[o:o + burst_len]
         icao = dec["icao"]
@@ -82,8 +85,12 @@ def process_chunk(t, iq, fs, rx_llh, store, burst_len, max_fix=1, phase_search=1
             store.update_velocity(icao, t, dec["speed"], dec["track"], dec["vrate"])
         mask = (msl > msl.mean()).astype(float)
         f_off = estimate_burst_offset(sl, mask, fs)
+        # signal strength: RMS amplitude of the message's ON pulses (0..~1.4 of
+        # full scale); build_snapshot turns the recent average into dBFS.
+        on = msl[msl > msl.mean()]
+        sig = float(np.sqrt(np.mean(on * on))) if on.size else 0.0
         before = store.burst_count(icao)
-        store.add_burst(icao, t, f_off, rx_llh)
+        store.add_burst(icao, t, f_off, rx_llh, signal=sig)
         added += store.burst_count(icao) - before
     return added
 
@@ -152,23 +159,39 @@ def main(argv=None):
     store = TrackStore(max_age=args.max_age, recorder=recorder)
 
     if args.web:
+        health = server.Health()
         def capture_loop():
-            for t, iq in iq_chunks(args.freq, args.fs, args.gain, args.ppm):
-                with store.lock:
-                    process_chunk(t, iq, args.fs, rx_llh, store, burst_len,
-                                  max_fix=max_fix, phase_search=args.phase_search,
-                                  threshold=args.threshold)
-                    if recorder:
-                        recorder.flush()
+            # Reconnect loop: if the dongle is unplugged mid-stream iq_chunks
+            # raises and closes the device; we flag the error (red light), wait,
+            # and reopen - so plugging it back in recovers on its own.
+            while True:
+                try:
+                    for t, iq in iq_chunks(args.freq, args.fs, args.gain, args.ppm):
+                        health.mark_chunk()
+                        if health.error:
+                            print("doppler1090: SDR reconnected")
+                            health.error = None
+                        with store.lock:
+                            process_chunk(t, iq, args.fs, rx_llh, store, burst_len,
+                                          max_fix=max_fix, phase_search=args.phase_search,
+                                          threshold=args.threshold, health=health)
+                            if recorder:
+                                recorder.flush()
+                except Exception as e:  # dongle unplugged / driver error -> go red
+                    health.error = str(e)
+                    print(f"doppler1090: SDR capture error ({e}); retrying in 2s")
+                time.sleep(2)           # wait before trying to reopen the dongle
         type_store = None
+        os.makedirs(args.data_dir, exist_ok=True)
         if not args.no_lookup:
-            os.makedirs(args.data_dir, exist_ok=True)
             type_store = aircraft.TypeStore(
                 os.path.join(args.data_dir, "aircraft.sqlite"),
                 use_faa=args.faa_registry)
+        records = Records(os.path.join(args.data_dir, "records.sqlite"))
         threading.Thread(target=capture_loop, daemon=True).start()
         server.serve(store, rx_llh, store.lock, min_conf, args.port,
-                     open_browser=True, history=history, type_store=type_store)
+                     open_browser=True, history=history, type_store=type_store,
+                     health=health, records=records)
         return
 
     # rich.Live with screen=True paints into the alternate screen buffer (like

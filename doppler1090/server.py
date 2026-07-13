@@ -9,13 +9,45 @@ from .geometry import geodetic_to_ecef
 from .terminal import confidence
 
 
+class Health:
+    """Capture-thread health, read by the web thread for the SDR status light.
+
+    The capture loop stamps ``mark_chunk`` for every IQ block it pulls from the
+    dongle and ``mark_decode`` whenever a frame decodes; if the loop dies (dongle
+    unplugged, driver error) it records ``error`` and stops stamping, so a stale
+    ``last_chunk`` is how the client learns the SDR went away."""
+
+    def __init__(self):
+        self.started = time.time()   # capture start, for a stable uptime clock
+        self.last_chunk = 0.0     # wall time of the most recent IQ block
+        self.last_decode = 0.0    # wall time of the most recent decoded frame
+        self.error = None         # capture-loop exception text, if it died
+
+    def mark_chunk(self):
+        self.last_chunk = time.time()
+
+    def mark_decode(self):
+        self.last_decode = time.time()
+
+    def snapshot(self, now):
+        chunk_age = (now - self.last_chunk) if self.last_chunk else None
+        decode_age = (now - self.last_decode) if self.last_decode else None
+        connected = chunk_age is not None and chunk_age < 3.0
+        receiving = connected and decode_age is not None and decode_age < 30.0
+        state = "receiving" if receiving else ("idle" if connected else "down")
+        return {"state": state, "chunk_age": chunk_age,
+                "decode_age": decode_age, "error": self.error}
+
+
 def build_snapshot(store, rx_llh, min_conf=0.0, at=None, server_time=None,
-                   type_store=None):
+                   type_store=None, health=None, records=None):
     """Build the JSON-serializable dashboard state. Caller holds store.lock.
 
     ``at`` is the epoch the frame represents (None => live). ``server_time`` is
     the current epoch, so the client can tell how far behind live it is.
-    ``type_store`` (optional) supplies cached aircraft make/model/registration."""
+    ``type_store`` (optional) supplies cached aircraft make/model/registration.
+    ``health`` (optional) supplies the SDR status light and a stable uptime -
+    both current regardless of which frame is being viewed."""
     rx = geodetic_to_ecef(*rx_llh)
     fits = store.joint_fit()
     aircraft = []
@@ -46,6 +78,9 @@ def build_snapshot(store, rx_llh, min_conf=0.0, at=None, server_time=None,
         reg = (info or {}).get("reg")
         photo = (type_store.get_photo(reg)
                  if (type_store is not None and reg) else None)
+        # signal strength: mean burst amplitude over the window, as dBFS
+        sigs = [x.signal for x in samples if x.signal > 0]
+        rssi = round(float(20 * np.log10(np.mean(sigs))), 1) if sigs else None
         aircraft.append({
             "icao": icao,
             "flight": s.get("flight"),
@@ -63,15 +98,27 @@ def build_snapshot(store, rx_llh, min_conf=0.0, at=None, server_time=None,
             "conf": round(float(conf), 2),
             "quality": round(float(fit.quality), 2),
             "bursts": int(fit.n),
+            "rssi": rssi,
+            "dop_span": round(float(fit.dop_span), 1),   # peak-to-peak predicted Hz
             "ground_track": ground_track,
             "doppler": doppler,
         })
-    return {
+    st = float(server_time if server_time is not None else time.time())
+    snap = {
         "receiver": {"lat": _f(rx_llh[0]), "lon": _f(rx_llh[1]), "alt": _f(rx_llh[2])},
         "aircraft": aircraft,
         "at": _f(at),
-        "server_time": float(server_time if server_time is not None else time.time()),
+        "server_time": st,
     }
+    if health is not None:
+        snap["sdr"] = health.snapshot(st)
+        snap["uptime"] = st - health.started   # stable: measured from capture start
+    if records is not None:
+        if at is None:                         # only the live frame sets records
+            for a in aircraft:
+                records.observe(a, st)
+        snap["records"] = records.snapshot()   # shown while scrubbing too
+    return snap
 
 
 def _f(v):
@@ -85,7 +132,8 @@ _CTYPES = {"html": "text/html", "js": "application/javascript",
            "svg": "image/svg+xml", "ico": "image/x-icon"}
 
 
-def _make_handler(store, rx_llh, lock, min_conf, history, type_store):
+def _make_handler(store, rx_llh, lock, min_conf, history, type_store, health,
+                  records):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass  # silence per-request logging
@@ -106,12 +154,16 @@ def _make_handler(store, rx_llh, lock, min_conf, history, type_store):
             if at is not None and history is not None:
                 at = float(at)
                 past = history.reconstruct(at)
-                body = json.dumps(build_snapshot(past, rx_llh, min_conf,
-                                                 at=at, type_store=type_store)).encode()
+                body = json.dumps(build_snapshot(past, rx_llh, min_conf, at=at,
+                                                 type_store=type_store,
+                                                 health=health,
+                                                 records=records)).encode()
             else:
                 with lock:
                     body = json.dumps(build_snapshot(store, rx_llh, min_conf,
-                                                     type_store=type_store)).encode()
+                                                     type_store=type_store,
+                                                     health=health,
+                                                     records=records)).encode()
             self._send(200, "application/json", body)
 
         def _timeline(self):
@@ -146,16 +198,17 @@ def _make_handler(store, rx_llh, lock, min_conf, history, type_store):
 
 
 def make_server(store, rx_llh, lock, min_conf, port=0, history=None,
-                type_store=None):
+                type_store=None, health=None, records=None):
     return ThreadingHTTPServer(("127.0.0.1", port),
                                _make_handler(store, rx_llh, lock, min_conf,
-                                             history, type_store))
+                                             history, type_store, health,
+                                             records))
 
 
 def serve(store, rx_llh, lock, min_conf, port, open_browser=False, history=None,
-          type_store=None):
+          type_store=None, health=None, records=None):
     httpd = make_server(store, rx_llh, lock, min_conf, port, history=history,
-                        type_store=type_store)
+                        type_store=type_store, health=health, records=records)
     actual = httpd.server_address[1]
     if open_browser:
         import webbrowser

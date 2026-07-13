@@ -693,11 +693,29 @@ function el(tag, cls, text) {
   return e;
 }
 
+// Plain-English hover explanations for the detail-panel stat cells.
+const STAT_HELP = {
+  range: 'Straight-line distance from your receiver to the aircraft.',
+  alt: 'Barometric altitude, in feet.',
+  spd: 'Ground speed, in knots.',
+  trk: 'Direction of travel (degrees, 0° = north).',
+  scale: 'Measured-to-predicted Doppler ratio. A clean pass sits near 1.0; '
+       + 'far off means the fit is poor or the geometry is unfavourable.',
+  corr: 'How well the measured Doppler curve matches the shape predicted from '
+      + "the aircraft's reported track (1.0 = perfect match, 0 = none).",
+  conf: 'Overall confidence that this Doppler measurement is trustworthy (0–1), '
+      + 'combining correlation, scale, and how straight/long the pass was.',
+  bursts: 'Number of individual Doppler measurements collected on this pass.',
+  sig: 'Received signal strength at your antenna, in dBFS. Closer to 0 is '
+     + 'stronger (e.g. −24 is a stronger signal than −40).',
+};
+
 function renderMeta(meta, a, ghostSince) {
   const trk = a.track != null ? Math.round(a.track) + '°' : '-';
   const range_nm = a.range_km != null ? (a.range_km / 1.852).toFixed(1) : '-';
   const cell = (k, v, u) => {
     const c = el('div', 'stat stat-' + k);   // per-metric class for colour
+    if (STAT_HELP[k]) c.title = STAT_HELP[k];   // plain-English hover explainer
     c.append(el('span', 'k', k));
     const val = el('span', 'v', String(v));
     if (u) val.append(el('span', 'u', u));
@@ -719,6 +737,7 @@ function renderMeta(meta, a, ghostSince) {
   ]);
   const secondary = grid('secondary', [
     ['scale', a.scale], ['corr', a.corr], ['conf', a.conf], ['bursts', a.bursts],
+    ['sig', a.rssi != null ? Math.round(a.rssi) : '-', a.rssi != null ? 'dB' : ''],
   ]);
   const head = el('div', 'callsign', a.flight || a.icao);
   const frag = [head];
@@ -757,6 +776,74 @@ function dur(secs) {
   const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60);
   return h ? `${h}h${String(m).padStart(2,'0')}` : `${m}m${String(secs%60).padStart(2,'0')}`;
 }
+// SDR status light in the header. green = frames decoding, amber = dongle
+// connected but nothing decoded lately (quiet sky / no antenna), red = capture
+// died or the server is unreachable. `s` is null when the SDR state is unknown.
+function updateSdr(s) {
+  const el = document.getElementById('h-sdr');
+  if (!el) return;
+  let cls = 'down', txt = 'SDR offline';
+  if (s) {
+    if (s.state === 'receiving') { cls = 'ok'; txt = 'receiving'; }
+    else if (s.state === 'idle') { cls = 'idle'; txt = 'no ADS-B'; }
+    else { cls = 'down'; txt = s.error ? 'SDR error' : 'SDR offline'; }
+  }
+  el.className = 'stat sdr ' + cls;
+  document.getElementById('h-sdr-txt').textContent = txt;
+}
+
+// All-time records rotate one-at-a-time through this list (every few seconds),
+// each showing the value plus the flight/tail, type, and time that set it.
+// Descent stays signed (negative), so it reads opposite to climb at a glance.
+const RECORD_SPECS = [
+  { key: 'speed_kt',      label: 'fastest',          unit: ' kt',  d: 0, cls: 'spd' },
+  { key: 'speed_min_kt',  label: 'slowest',          unit: ' kt',  d: 0, cls: 'spd' },
+  { key: 'alt_ft',        label: 'highest',          unit: ' ft',  d: 0, cls: 'alt' },
+  { key: 'alt_min_ft',    label: 'lowest',           unit: ' ft',  d: 0, cls: 'alt' },
+  { key: 'vrate_max_fpm', label: 'fastest climb',    unit: ' fpm', d: 0, cls: 'vrt' },
+  { key: 'vrate_min_fpm', label: 'steepest descent', unit: ' fpm', d: 0, cls: 'vrt' },
+  { key: 'range_nm',      label: 'farthest',         unit: ' nm',  d: 0, cls: 'rng' },
+  { key: 'closest_nm',    label: 'nearest',          unit: ' nm',  d: 1, cls: 'rng' },
+  { key: 'sig_max_db',    label: 'strongest signal', unit: ' dB',  d: 0, cls: 'sig' },
+  { key: 'sig_min_db',    label: 'weakest signal',   unit: ' dB',  d: 0, cls: 'sig' },
+  { key: 'dop_span_hz',   label: 'widest Δf',        unit: ' Hz',  d: 0, cls: 'dop' },
+];
+let recordIdx = 0;
+
+function renderRecord(el, spec, r) {
+  el.className = 'record ' + spec.cls;
+  el.querySelector('.rec-label').textContent = spec.label;         // name
+  el.querySelector('.rec-val').textContent =                       // value
+    r.value.toLocaleString(undefined, { maximumFractionDigits: spec.d }) + spec.unit;
+  el.querySelector('.rec-date').textContent = r.ts ? hms(r.ts) + 'Z' : '';   // date
+  const who = [r.flight || r.reg,          // callsign if known, else the tail
+               [r.make, r.model].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
+  el.querySelector('.rec-who').textContent = who || r.icao || '';
+}
+
+// Advance to the next record that has data, fading it in.
+function tickRecord() {
+  const el = document.getElementById('h-record');
+  if (!el) return;
+  const recs = latest.records || {};
+  for (let n = 0; n < RECORD_SPECS.length; n++) {
+    const i = (recordIdx + n) % RECORD_SPECS.length;
+    const r = recs[RECORD_SPECS[i].key];
+    if (r && r.value != null) {
+      recordIdx = (i + 1) % RECORD_SPECS.length;
+      const spec = RECORD_SPECS[i];
+      el.style.opacity = 0;
+      setTimeout(() => { renderRecord(el, spec, r); el.style.opacity = 1; }, 200);
+      return;
+    }
+  }
+  el.className = 'record';
+  el.querySelector('.rec-label').textContent = 'records';
+  el.querySelector('.rec-val').textContent = '–';
+  el.querySelector('.rec-date').textContent = '';
+  el.querySelector('.rec-who').textContent = 'waiting for aircraft…';
+}
+
 function updateHud() {
   const r = latest.receiver || {};
   document.getElementById('h-rx').textContent =
@@ -769,7 +856,12 @@ function updateHud() {
   const utc = t ? hms(t) + 'Z' : '--:--:--';
   document.getElementById('clock').textContent = mode === 'live' ? utc
     : `${utc} −${dur((tl ? tl.end : serverNow) - viewTime)}`;
-  const up = (tl && tl.start) ? serverNow - tl.start : 0;
+  updateSdr(latest.sdr);
+  // uptime from the server's stable capture-start clock; before any data is
+  // recorded the timeline's start is just "now" and would flicker, so prefer
+  // the server value and only fall back to the timeline when it's absent.
+  const up = latest.uptime != null ? latest.uptime
+           : ((tl && tl.start) ? serverNow - tl.start : 0);
   document.getElementById('h-uptime').innerHTML = `${dur(up)}<span class="u">up</span>`;
   // decode rate as bursts/min over a fixed recent window (a sparse dipole feed
   // reads ~0 on a per-second rate; per-minute is meaningful).
@@ -782,7 +874,7 @@ function updateHud() {
     perMin = recent * 60 / (nb * bw);
   }
   document.getElementById('h-rate').innerHTML =
-    `${perMin < 10 ? perMin.toFixed(1) : perMin.toFixed(0)}<span class="u">brst/min</span>`;
+    `${perMin < 10 ? perMin.toFixed(1) : perMin.toFixed(0)}<span class="u">burst/min</span>`;
   // Only flag PAST while scrubbing; when live the highlighted LIVE button is
   // the sole indicator (no duplicated "LIVE").
   const badge = document.getElementById('h-mode');
@@ -857,8 +949,12 @@ async function fetchState(at) {
     const url = at == null ? '/api/state' : `/api/state?at=${at}`;
     const r = await fetch(url);
     render(await r.json());
-  } catch (e) { /* keep last frame */ }
-  finally { inflight = false; }
+  } catch (e) {
+    // server unreachable: keep the last frame but flag the light red
+    const el = document.getElementById('h-sdr');
+    if (el) { el.className = 'stat sdr down';
+      document.getElementById('h-sdr-txt').textContent = 'offline'; }
+  } finally { inflight = false; }
 }
 async function pollTimeline() {
   try {
@@ -926,4 +1022,6 @@ fetchState(null);
 pollTimeline();
 setInterval(() => { if (mode === 'live') fetchState(null); }, 1000);
 setInterval(pollTimeline, 2000);
+tickRecord();
+setInterval(tickRecord, 5000);   // rotate the all-time record on show
 window.addEventListener('resize', () => { drawPlot(); drawTimeline(); });
