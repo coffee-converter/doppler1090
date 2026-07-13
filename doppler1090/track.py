@@ -41,6 +41,7 @@ class TrackStore:
         self.max_age = max_age
         self.recorder = recorder  # optional history.Recorder; mirrors every event
         self.lock = threading.Lock()  # held externally around mutation/snapshot
+        self._clock = None    # last receiver clock estimate from joint_fit
 
     def _st(self, icao):
         return self._state.setdefault(icao, {})
@@ -158,6 +159,7 @@ class TrackStore:
         actives = [(ic, self._samples[ic]) for ic in self.icaos()
                    if len(self._samples.get(ic, [])) >= MIN_BURSTS]
         if len(actives) < min_aircraft:
+            self._clock = None      # drift not separable with <2 aircraft
             return {ic: self.fit(ic) for ic, _ in actives}
 
         all_t = [x.t for _, smp in actives for x in smp]
@@ -186,6 +188,18 @@ class TrackStore:
         coef, *_ = np.linalg.lstsq(design, target, rcond=None)
         consts = coef[:n]
         drift = coef[n:]
+
+        # Receiver clock estimate (for calibration). The shared drift term is the
+        # time-varying oscillator drift - cleanly recoverable. The mean per-
+        # aircraft constant estimates the fixed LO offset; it is noisier, since
+        # each constant also absorbs that transmitter's own offset, but those
+        # average toward zero over many aircraft. 1 ppm at 1090 MHz = 1090 Hz.
+        drift_hz_per_s = (float(drift[0]) / tspan) if k >= 1 else 0.0
+        self._clock = {"drift_ppm_min": drift_hz_per_s / 1090.0 * 60.0,
+                       "n_aircraft": int(n),
+                       # each aircraft's own constant (LO offset + its transmitter
+                       # offset); the accumulator medians these across aircraft.
+                       "consts": {parts[j][0]: float(consts[j]) for j in range(n)}}
 
         results = {}
         for j, (ic, tn, f, d, mlen) in enumerate(parts):
