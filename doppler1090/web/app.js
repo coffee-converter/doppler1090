@@ -242,6 +242,10 @@ function removeEntry(icao) {
   if (e.marker) map.removeLayer(e.marker);
   e.tracks.forEach(l => map.removeLayer(l));
   delete layers[icao];
+  if (selected === icao) {          // dropped the selected aircraft: deselect
+    selected = null;
+    document.getElementById('rail').classList.remove('selected');
+  }
 }
 
 // Concentric range rings from the receiver, in nautical miles (aviation
@@ -611,11 +615,12 @@ function drawPlot() {
 
   const found = findAircraft(selected);
   const meta = document.getElementById('meta');
-  if (!found) {
-    ctx.fillStyle = COL.ink; ctx.font = '13px system-ui, sans-serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('no data at this time', W / 2, H / 2);
-    meta.replaceChildren(el('div', 'placeholder', 'no data at this time')); return;
+  if (!found) {                     // selected aircraft has gone: fall back cleanly
+    selected = null;
+    document.getElementById('rail').classList.remove('selected');
+    meta.replaceChildren(
+      el('div', 'placeholder', 'select an aircraft above to see details'));
+    return;
   }
   const a = found.a, pts = a.doppler;
   const ts = pts.map(p => p.t), ms = pts.map(p => p.measured), ps = pts.map(p => p.predicted);
