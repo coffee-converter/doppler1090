@@ -60,6 +60,9 @@ const baseLayers = {
 };
 baseLayers['VFR Sectional'].addTo(map);
 L.control.layers(baseLayers, {}, { position: 'topright' }).addTo(map);
+// Clicks that miss a marker (empty space, or just off a cluster) still route
+// through the same cycle logic; trails are non-interactive so they pass through.
+map.on('click', ev => selectAt(ev.containerPoint));
 
 // ---- state ---------------------------------------------------------------
 let receiverMarker = null, ringsDrawn = false;
@@ -115,7 +118,7 @@ function addTrailSegment(p0, p1, weight, sink) {
       // (the line is thin, so the chart still reads around it); round caps + join
       // keep turns gap-free. Ghosts fade by muting colour, not lowering opacity.
       { color: dopColor(dop), weight, opacity: 1,
-        lineCap: 'round', lineJoin: 'round' });
+        lineCap: 'round', lineJoin: 'round', interactive: false });
     seg._dop = dop;                    // remembered so ghosts recolour muted
     seg.addTo(map); sink.push(seg);
   }
@@ -184,23 +187,19 @@ function render(state) {
       addTrailSegment(g[i-1], g[i], isSel ? 7 : 4, entry.tracks);
     }
     if (a.lat != null) {
-      const label = a.flight || a.icao;
       if (!entry.marker) {
-        entry.marker = L.marker([a.lat, a.lon], { icon: planeIcon(a.track, isSel, false, shapeFor(a)) })
-          .addTo(map).on('click', () => select(a.icao))
-          .bindTooltip(label, { permanent: false, direction: 'top',
-                                offset: [0, -16], opacity: 0.95 });
-        entry.label = label;
+        entry.marker = L.marker([a.lat, a.lon],
+          { icon: planeIcon(a.track, isSel, false, shapeFor(a)) })
+          // A click cycles through every aircraft under the pointer (selectAt),
+          // so overlapping planes in busy areas all stay reachable.
+          .addTo(map).on('click', ev => selectAt(ev.containerPoint));
       } else {
         entry.marker.setLatLng([a.lat, a.lon]);
-        // Only rebuild the icon / tooltip when something actually changed —
-        // rebinding every frame tears down an active hover and makes tooltips
-        // flicker in and out.
         setIconIfChanged(entry, a.track, isSel, false, shapeFor(a));
-        if (entry.label !== label) { entry.marker.setTooltipContent(label); entry.label = label; }
       }
       entry.marker.setOpacity(1);
-      entry.marker.setZIndexOffset(isSel ? 1000 : 0);
+      // Live icons stack by altitude (highest on top); selected always tops.
+      entry.marker.setZIndexOffset(zFor(isSel, a.alt, true));
     }
   }
   // absent aircraft: in live mode they linger as fading ghosts; in past mode
@@ -223,7 +222,7 @@ function render(state) {
     if (e.marker) {
       setIconIfChanged(e, e.data ? e.data.track : 0, isSel, true, shapeFor(e.data || {}));
       e.marker.setOpacity(isSel ? 1 : Math.max(op, 0.25));
-      e.marker.setZIndexOffset(isSel ? 1000 : 0);
+      e.marker.setZIndexOffset(zFor(isSel, e.data && e.data.alt, false));
     }
   }
   drawSelectionOverlays();
@@ -508,6 +507,44 @@ function select(icao) {
   selected = (selected === icao) ? null : icao;   // click again to deselect
   document.getElementById('rail').classList.toggle('selected', !!selected);
   render(latest);
+}
+
+// A map/marker click cycles through every aircraft under (or very near) the
+// click, so overlapping planes in a busy area are all reachable. The first click
+// on a stack takes the topmost live aircraft (highest altitude); each further
+// click in the same spot steps to the next one underneath, wrapping around.
+// Clicking empty space clears the selection.
+const CLICK_RADIUS = 30;   // px around the click that counts as "under it"
+function selectAt(pt) {
+  const liveSet = new Set(latest.aircraft.map(a => a.icao));
+  const cands = Object.values(layers)
+    .filter(e => e.marker && e.data)
+    .map(e => ({ icao: e.data.icao, live: liveSet.has(e.data.icao),
+                 alt: e.data.alt || 0,
+                 d: map.latLngToContainerPoint(e.marker.getLatLng()).distanceTo(pt) }))
+    .filter(x => x.d <= CLICK_RADIUS)
+    // topmost first: live before ghost, then highest altitude, then nearest
+    .sort((p, q) => (q.live - p.live) || (q.alt - p.alt) || (p.d - q.d));
+  if (!cands.length) {                 // empty space -> deselect
+    if (selected) {
+      selected = null;
+      document.getElementById('rail').classList.remove('selected');
+      render(latest);
+    }
+    return;
+  }
+  const i = cands.findIndex(x => x.icao === selected);
+  selected = cands[(i + 1) % cands.length].icao;   // i<0 -> topmost; else descend
+  document.getElementById('rail').classList.add('selected');
+  render(latest);
+}
+
+// Marker stacking: selected on top of everything, then live aircraft by altitude
+// (highest highest), then ghosts sunk beneath all live planes.
+function zFor(isSel, alt, live) {
+  if (isSel) return 100000;
+  const a = Math.round((alt || 0) / 10);
+  return live ? a : a - 100000;
 }
 
 // ---- measured-vs-predicted plot -----------------------------------------
