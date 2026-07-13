@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -39,8 +40,18 @@ class Health:
                 "decode_age": decode_age, "error": self.error}
 
 
+def _bearing(lat1, lon1, lat2, lon2):
+    """Initial great-circle bearing from receiver to aircraft, degrees 0-360."""
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dl = math.radians(lon2 - lon1)
+    y = math.sin(dl) * math.cos(p2)
+    x = math.cos(p1) * math.sin(p2) - math.sin(p1) * math.cos(p2) * math.cos(dl)
+    return (math.degrees(math.atan2(y, x)) + 360.0) % 360.0
+
+
 def build_snapshot(store, rx_llh, min_conf=0.0, at=None, server_time=None,
-                   type_store=None, health=None, records=None):
+                   type_store=None, health=None, records=None, coverage=None,
+                   clockcal=None):
     """Build the JSON-serializable dashboard state. Caller holds store.lock.
 
     ``at`` is the epoch the frame represents (None => live). ``server_time`` is
@@ -118,6 +129,23 @@ def build_snapshot(store, rx_llh, min_conf=0.0, at=None, server_time=None,
             for a in aircraft:
                 records.observe(a, st)
         snap["records"] = records.snapshot()   # shown while scrubbing too
+    if coverage is not None:
+        if at is None:
+            for a in aircraft:
+                if a["lat"] is not None and a["range_km"]:
+                    coverage.observe(_bearing(rx_llh[0], rx_llh[1],
+                                              a["lat"], a["lon"]),
+                                     a["range_km"] / 1.852, st)
+        snap["coverage"] = coverage.snapshot()
+    if clockcal is not None:
+        cur = getattr(store, "_clock", None)   # this frame's joint fit (drift, consts)
+        if at is None and cur is not None:
+            clockcal.observe(cur.get("consts"), st)
+        est = clockcal.estimate(st)            # accumulated median residual offset
+        if est is not None:
+            est["drift_ppm_min"] = cur["drift_ppm_min"] if cur else None
+            est["fresh_n"] = cur["n_aircraft"] if cur else 0
+        snap["clock"] = est
     return snap
 
 
@@ -133,7 +161,7 @@ _CTYPES = {"html": "text/html", "js": "application/javascript",
 
 
 def _make_handler(store, rx_llh, lock, min_conf, history, type_store, health,
-                  records):
+                  records, coverage, clockcal):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass  # silence per-request logging
@@ -156,14 +184,16 @@ def _make_handler(store, rx_llh, lock, min_conf, history, type_store, health,
                 past = history.reconstruct(at)
                 body = json.dumps(build_snapshot(past, rx_llh, min_conf, at=at,
                                                  type_store=type_store,
-                                                 health=health,
-                                                 records=records)).encode()
+                                                 health=health, records=records,
+                                                 coverage=coverage,
+                                                 clockcal=clockcal)).encode()
             else:
                 with lock:
                     body = json.dumps(build_snapshot(store, rx_llh, min_conf,
                                                      type_store=type_store,
-                                                     health=health,
-                                                     records=records)).encode()
+                                                     health=health, records=records,
+                                                     coverage=coverage,
+                                                     clockcal=clockcal)).encode()
             self._send(200, "application/json", body)
 
         def _timeline(self):
@@ -198,17 +228,19 @@ def _make_handler(store, rx_llh, lock, min_conf, history, type_store, health,
 
 
 def make_server(store, rx_llh, lock, min_conf, port=0, history=None,
-                type_store=None, health=None, records=None):
+                type_store=None, health=None, records=None, coverage=None,
+                clockcal=None):
     return ThreadingHTTPServer(("127.0.0.1", port),
                                _make_handler(store, rx_llh, lock, min_conf,
                                              history, type_store, health,
-                                             records))
+                                             records, coverage, clockcal))
 
 
 def serve(store, rx_llh, lock, min_conf, port, open_browser=False, history=None,
-          type_store=None, health=None, records=None):
+          type_store=None, health=None, records=None, coverage=None, clockcal=None):
     httpd = make_server(store, rx_llh, lock, min_conf, port, history=history,
-                        type_store=type_store, health=health, records=records)
+                        type_store=type_store, health=health, records=records,
+                        coverage=coverage, clockcal=clockcal)
     actual = httpd.server_address[1]
     if open_browser:
         import webbrowser

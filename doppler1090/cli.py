@@ -14,6 +14,8 @@ from .track import TrackStore
 from .history import Recorder, History
 from . import aircraft
 from .records import Records
+from .coverage import Coverage
+from .clockcal import ClockCal
 from .terminal import build_rows, build_table
 from . import server
 
@@ -188,10 +190,14 @@ def main(argv=None):
                 os.path.join(args.data_dir, "aircraft.sqlite"),
                 use_faa=args.faa_registry)
         records = Records(os.path.join(args.data_dir, "records.sqlite"))
+        coverage = Coverage(os.path.join(args.data_dir, "coverage.sqlite"))
+        clockcal = ClockCal(os.path.join(args.data_dir, "clockcal.sqlite"),
+                            ppm=args.ppm)
         threading.Thread(target=capture_loop, daemon=True).start()
         server.serve(store, rx_llh, store.lock, min_conf, args.port,
                      open_browser=True, history=history, type_store=type_store,
-                     health=health, records=records)
+                     health=health, records=records, coverage=coverage,
+                     clockcal=clockcal)
         return
 
     # rich.Live with screen=True paints into the alternate screen buffer (like

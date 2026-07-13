@@ -33,6 +33,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #hud .statrow { display: flex; flex-wrap: wrap; gap: 3px 12px; margin-top: 6px;
                 font-size: 11px; letter-spacing: .3px; }
 #hud .stat { font-family: var(--mono); color: var(--ink-dim); }
+#hud #h-clock.stale { opacity: .5; }   /* last estimate held while <2 aircraft */
 #hud .stat .u { margin-left: 3px; font-size: 10px; }
 /* SDR status light: colour flows from the state class onto both the dot (via
    currentColor) and the label. green = decoding, amber = connected but quiet,

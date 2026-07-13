@@ -59,7 +59,12 @@ const baseLayers = {
   'OpenStreetMap': osm,
 };
 baseLayers['VFR Sectional'].addTo(map);
-L.control.layers(baseLayers, {}, { position: 'topright' }).addTo(map);
+// Antenna coverage: a toggleable overlay (off by default) drawing the farthest-
+// heard range per bearing as a polygon around the receiver.
+const coverageLayer = L.layerGroup();
+coverageLayer.on('add', () => updateCoverage(latest.coverage));
+L.control.layers(baseLayers, { 'Coverage': coverageLayer },
+                 { position: 'topright' }).addTo(map);
 // Clicks that miss a marker (empty space, or just off a cluster) still route
 // through the same cycle logic; trails are non-interactive so they pass through.
 map.on('click', ev => selectAt(ev.containerPoint));
@@ -810,12 +815,21 @@ const RECORD_SPECS = [
 ];
 let recordIdx = 0;
 
+// Human "time since" for all-time records (which may be days old).
+function relTime(ts) {
+  const s = Math.max(0, (serverNow || (Date.now() / 1000)) - ts);
+  if (s < 45) return 'just now';
+  if (s < 5400) return Math.max(1, Math.round(s / 60)) + ' min ago';
+  if (s < 172800) return Math.round(s / 3600) + ' hr ago';
+  return Math.round(s / 86400) + ' d ago';
+}
+
 function renderRecord(el, spec, r) {
   el.className = 'record ' + spec.cls;
   el.querySelector('.rec-label').textContent = spec.label;         // name
   el.querySelector('.rec-val').textContent =                       // value
     r.value.toLocaleString(undefined, { maximumFractionDigits: spec.d }) + spec.unit;
-  el.querySelector('.rec-date').textContent = r.ts ? hms(r.ts) + 'Z' : '';   // date
+  el.querySelector('.rec-date').textContent = r.ts ? relTime(r.ts) : '';   // when
   const who = [r.flight || r.reg,          // callsign if known, else the tail
                [r.make, r.model].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
   el.querySelector('.rec-who').textContent = who || r.icao || '';
@@ -844,6 +858,54 @@ function tickRecord() {
   el.querySelector('.rec-who').textContent = 'waiting for aircraft…';
 }
 
+// Great-circle point `distNm` from (lat,lon) along bearing `brgDeg`.
+function destPoint(lat, lon, brgDeg, distNm) {
+  const R = 3440.065;                       // Earth radius, nm
+  const d = distNm / R, brg = brgDeg * Math.PI / 180;
+  const p1 = lat * Math.PI / 180, l1 = lon * Math.PI / 180;
+  const p2 = Math.asin(Math.sin(p1) * Math.cos(d) +
+                       Math.cos(p1) * Math.sin(d) * Math.cos(brg));
+  const l2 = l1 + Math.atan2(Math.sin(brg) * Math.sin(d) * Math.cos(p1),
+                             Math.cos(d) - Math.sin(p1) * Math.sin(p2));
+  return [p2 * 180 / Math.PI, l2 * 180 / Math.PI];
+}
+
+// Redraw the coverage polygon (per-bearing farthest range) when the layer is on.
+let coveragePoly = null;
+function updateCoverage(cov) {
+  if (!map.hasLayer(coverageLayer) || !cov || !receiverMarker) return;
+  const rx = receiverMarker.getLatLng(), step = cov.step_deg;
+  const pts = cov.sectors.map((r, i) =>
+    destPoint(rx.lat, rx.lng, i * step + step / 2, r || 0));   // r=0 pulls to centre
+  if (coveragePoly) coverageLayer.removeLayer(coveragePoly);
+  coveragePoly = L.polygon(pts, { color: '#4be3e9', weight: 1.5, opacity: 0.75,
+    fillColor: '#4be3e9', fillOpacity: 0.08, lineJoin: 'round', interactive: false });
+  coverageLayer.addLayer(coveragePoly);
+}
+
+// Receiver oscillator estimate in the header. Offset is noisy (it averages out
+// transmitter offsets over many aircraft), so smooth it; drift is steadier.
+// Header oscillator readout: the server accumulates a robust absolute offset
+// (median over many aircraft, invariant to --ppm), so we just display it. It
+// stays put once we've ever had an estimate; dims when not actively refreshing.
+let clockPpm = null;
+function updateClock(c) {
+  const el = document.getElementById('h-clock');
+  if (!el) return;
+  if (!c) { if (clockPpm == null) el.style.display = 'none'; return; }
+  el.style.display = '';
+  clockPpm = c.offset_ppm;                       // absolute crystal offset (ppm)
+  el.classList.toggle('stale', !c.fresh_n);      // dim while not fitting right now
+  el.querySelector('.v').textContent = (clockPpm >= 0 ? '+' : '') + clockPpm.toFixed(1);
+  const cur = c.ppm || 0, residual = clockPpm - cur, drift = c.drift_ppm_min;
+  el.title =
+    `Estimated receiver oscillator offset ${clockPpm.toFixed(2)} ppm — median over `
+    + `${c.n_aircraft} aircraft (last ${c.window_h} h). Suggested: --ppm ${Math.round(clockPpm)} `
+    + `(currently --ppm ${cur}; residual ${residual >= 0 ? '+' : ''}${residual.toFixed(1)} ppm). `
+    + (drift != null ? `Drift ${drift >= 0 ? '+' : ''}${drift.toFixed(2)} ppm/min. ` : '')
+    + `Verify by applying it — the residual should head toward 0.`;
+}
+
 function updateHud() {
   const r = latest.receiver || {};
   document.getElementById('h-rx').textContent =
@@ -857,6 +919,8 @@ function updateHud() {
   document.getElementById('clock').textContent = mode === 'live' ? utc
     : `${utc} −${dur((tl ? tl.end : serverNow) - viewTime)}`;
   updateSdr(latest.sdr);
+  updateClock(latest.clock);
+  updateCoverage(latest.coverage);
   // uptime from the server's stable capture-start clock; before any data is
   // recorded the timeline's start is just "now" and would flicker, so prefer
   // the server value and only fall back to the timeline when it's absent.
