@@ -60,19 +60,22 @@ default). The map is a fullscreen "scope"; a left panel and a bottom scrubber fl
   sectionals SkyVector uses, served straight from the FAA's tile service, with a layer
   switcher for the VFR Sectional, an auto **IFR** enroute chart (high-altitude when zoomed
   out, low-altitude when zoomed in), or plain OpenStreetMap for outside US coverage. Each
-  aircraft is a heading-aligned icon; its ground track is drawn one segment at a time and
-  **colored by Doppler sign** - blue approaching, through white at closest approach, to red
-  receding. The receiver is marked in gold with concentric range rings, and the selected
-  aircraft gets a line-of-sight and a marker at its closest-approach (zero-Doppler) point.
-  When an aircraft stops transmitting it lingers as a fading grey "ghost" for a few minutes
-  before dropping off, so recent passes stay in view.
+  aircraft is a **type-accurate silhouette** aligned to its heading; its ground track is
+  painted as a smooth **Doppler gradient** - blue approaching, through white at closest
+  approach, to red receding - interpolated from the predicted curve so the colour reads
+  correctly even across a coarse or overhead segment. The receiver is marked in gold with
+  concentric nautical-mile range rings, and the selected aircraft gets a line-of-sight to
+  the receiver. When an aircraft stops transmitting it lingers as a fading, desaturated
+  "ghost" for a few minutes before dropping off, so recent passes stay in view.
 - **Left panel.** A status header (receiver, uptime, aircraft count, decode rate) over a
-  list of aircraft cards - callsign, fit confidence, and a Doppler sparkline - in stable
-  first-seen order. Silent aircraft collapse to compact pills; click one to expand it.
-  Selecting an aircraft plots its **measured vs. predicted** Doppler over the whole pass
-  (blue points = measured per-burst offset, green line = the curve predicted from its ADS-B
-  state vector, with 0 Hz centered), above its fit stats - correlation, confidence, burst
-  count - and its range, altitude, speed, and track.
+  list of aircraft cards - callsign, type, fit confidence, and a Doppler sparkline - in
+  stable first-seen order. Silent aircraft collapse to compact pills; click one to expand
+  it. The expanded card names the aircraft's **make, model, and registration** and shows a
+  **photo** when one is available (all resolved from its Mode S address - see below), then
+  plots its **measured vs. predicted** Doppler over the whole pass (blue points = measured
+  per-burst offset, green line = the curve predicted from its ADS-B state vector, with 0 Hz
+  centered), above its fit stats - correlation, confidence, burst count - and its range,
+  altitude, speed, and track.
 - **Time travel.** Every session is recorded, so the bottom scrubber can replay it: drag
   the playhead or hit play to animate past aircraft tracks over an activity-density strip,
   then jump back to **LIVE**. Capture keeps running and recording the whole time you scrub.
@@ -88,9 +91,18 @@ computed against - so pass your antenna's latitude and longitude:
 ```sh
 pip install -e .
 doppler1090 --help
-doppler1090 --lat 41.88 --lon -87.63            # live rich terminal table
-doppler1090 --lat 41.88 --lon -87.63 --web      # + browser dashboard (default :8080)
+doppler1090 --lat 41.88 --lon -87.63                 # live rich terminal table
+doppler1090 --lat 41.88 --lon -87.63 --web           # + browser dashboard (default :8080)
+doppler1090 --lat 41.88 --lon -87.63 --web --faa-registry   # + offline US make/model lookup
 ```
+
+Make, model, and registration are resolved from each aircraft's Mode S address via the free
+[adsbdb](https://www.adsbdb.com/) API, and a photo from
+[planespotters](https://www.planespotters.net/) (falling back to airport-data.com) - all
+cached to the data dir and shared across sessions. `--faa-registry` adds a one-time ~73 MB
+download of the FAA aircraft registry for offline, US-complete coverage (it fills in the
+private/GA tails the API misses). Lookups run on a background thread, so a miss just fills
+in on a later frame and never blocks capture.
 
 Each run is recorded to `./doppler1090-data/` (one SQLite file per session) so the
 dashboard's time slider can replay it; pass `--no-record` to disable or `--data-dir` to
@@ -116,7 +128,8 @@ and [OpenStreetMap](https://www.openstreetmap.org/copyright) tiles (web map)
 
 Licensed under the **GNU General Public License v3.0** - see [LICENSE](LICENSE).
 `doppler1090` links against `pyModeS` and `pyrtlsdr`, both GPLv3, so the combined work is
-distributed under the same terms.
+distributed under the same terms. The aircraft silhouette icons are the marker set from
+[tar1090](https://github.com/wiedehopf/tar1090) (GPLv3), vendored under `web/vendor/`.
 
 The name follows the lineage of [`dump1090`](https://github.com/antirez/dump1090)
 (Salvatore Sanfilippo, BSD-3-Clause). doppler1090 is an independent Python project: it
