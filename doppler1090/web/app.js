@@ -81,12 +81,19 @@ const GHOST_TTL_MS = 5 * 60 * 1000;
 function ghostFade(ageMs) { return 0.5 - 0.38 * Math.min(1, ageMs / GHOST_TTL_MS); }
 
 // Doppler (Hz) -> diverging color. + = approaching = blue, - = receding = red.
-function dopColor(hz) {
+// Blue (approaching) -> white (0) -> red (receding). Optional `mute` (0..1)
+// blends toward slate, used to fade ghost trails by desaturating rather than
+// going transparent (transparent overlaps brighten where segments meet).
+function dopColor(hz, mute) {
   const x = Math.max(-1, Math.min(1, hz / 600));
-  if (x >= 0) { const t = x;
-    return `rgb(${Math.round(255*(1-t))},${Math.round(255*(1-t))},255)`; }
-  const t = -x;
-  return `rgb(255,${Math.round(255*(1-t))},${Math.round(255*(1-t))})`;
+  let r, g, b;
+  if (x >= 0) { const t = x; r = Math.round(255*(1-t)); g = r; b = 255; }
+  else { const t = -x; r = 255; g = Math.round(255*(1-t)); b = g; }
+  if (mute) { const s = [92, 102, 116];   // slate the colours fade toward
+    r = Math.round(r + (s[0]-r)*mute);
+    g = Math.round(g + (s[1]-g)*mute);
+    b = Math.round(b + (s[2]-b)*mute); }
+  return `rgb(${r},${g},${b})`;
 }
 
 // Paint one trail segment as a Doppler gradient. Predicted Doppler is a smooth
@@ -100,11 +107,16 @@ function addTrailSegment(p0, p1, weight, sink) {
   const steps = Math.max(1, Math.min(12, Math.round(Math.abs(p1[2] - p0[2]) / 40)));
   for (let k = 0; k < steps; k++) {
     const f0 = k / steps, f1 = (k + 1) / steps, fm = (f0 + f1) / 2;
+    const dop = p0[2] + (p1[2] - p0[2]) * fm;
     const seg = L.polyline([
       [p0[0] + (p1[0] - p0[0]) * f0, p0[1] + (p1[1] - p0[1]) * f0],
       [p0[0] + (p1[0] - p0[0]) * f1, p0[1] + (p1[1] - p0[1]) * f1]],
-      { color: dopColor(p0[2] + (p1[2] - p0[2]) * fm), weight, opacity: 0.9,
-        lineCap: 'round' });
+      // Fully opaque so overlapping round caps don't brighten where slices meet
+      // (the line is thin, so the chart still reads around it); round caps + join
+      // keep turns gap-free. Ghosts fade by muting colour, not lowering opacity.
+      { color: dopColor(dop), weight, opacity: 1,
+        lineCap: 'round', lineJoin: 'round' });
+    seg._dop = dop;                    // remembered so ghosts recolour muted
     seg.addTo(map); sink.push(seg);
   }
 }
@@ -202,9 +214,12 @@ function render(state) {
     if (age > GHOST_TTL_MS) { removeEntry(icao); continue; }
     const isSel = icao === selected;
     const op = ghostFade(age);
-    // a selected ghost stays fully visible (gold, full opacity) so you can see
-    // which quiet aircraft is selected; unselected ghosts fade as before.
-    e.tracks.forEach(l => l.setStyle({ opacity: isSel ? 0.9 : op, weight: isSel ? 5 : 3 }));
+    // A ghost trail stays fully opaque and fades by muting its colour toward
+    // slate (keeps it artifact-free, unlike transparency). A selected ghost
+    // stays vivid so you can tell which quiet aircraft is selected.
+    const mute = isSel ? 0 : 0.5 + 0.3 * Math.min(1, age / GHOST_TTL_MS);
+    e.tracks.forEach(l => l.setStyle({
+      color: dopColor(l._dop || 0, mute), opacity: 1, weight: isSel ? 5 : 3 }));
     if (e.marker) {
       setIconIfChanged(e, e.data ? e.data.track : 0, isSel, true, shapeFor(e.data || {}));
       e.marker.setOpacity(isSel ? 1 : Math.max(op, 0.25));
@@ -277,12 +292,6 @@ function drawSelectionOverlays() {
     selLayers.push(L.polyline([[rx.lat, rx.lng], [a.lat, a.lon]],
       { color: '#ffd400', weight: 1, opacity: 0.5, dashArray: '4 5',
         interactive: false }).addTo(map));
-  }
-  const ca = closestApproach(a.ground_track);
-  if (ca) {
-    selLayers.push(L.circleMarker(ca, { radius: 5, color: '#ffffff',
-      weight: 2, fillColor: '#0c0f14', fillOpacity: 1, interactive: false })
-      .addTo(map).bindTooltip('closest approach', { permanent: false }));
   }
 }
 
@@ -405,7 +414,18 @@ function keywordShape(a) {
   if (has('ATR', 'DASH', 'DHC', 'DH8', 'SAAB', 'KING AIR', 'METRO'))
     return ['twin_large', 0.95];
   if (has('PC-12', 'C208', 'CARAVAN', 'TBM', 'PILATUS')) return ['single_turbo', 1];
-  if (has('CESSNA', 'PIPER', 'CIRRUS', 'MOONEY', 'DIAMOND', 'BEECH', 'C172',
+  // Textron/Cessna/Beechcraft appear in the FAA registry as the corporate make
+  // plus a bare model number, so decide by the model: 500-799 are Citation
+  // jets, 208 a Caravan, 90-350 King Air turboprops, the rest light pistons.
+  if (has('TEXTRON', 'CESSNA', 'BEECH', 'HAWKER')) {
+    const model = (a && a.model || '').toUpperCase();
+    if (has('CITATION', 'HAWKER') || /[567]\d\d/.test(model)) return ['hi_perf', 0.95];
+    if (has('CARAVAN') || /\b208/.test(model)) return ['single_turbo', 1];
+    if (has('KING AIR') || /\b[ABCEF]?(90|100|200|300|350)/.test(model))
+      return ['twin_large', 0.95];
+    return ['cessna', 1];
+  }
+  if (has('PIPER', 'CIRRUS', 'MOONEY', 'DIAMOND', 'C172',
           'C182', 'C152', 'PA-', 'SR2', 'BONANZA')) return ['cessna', 1];
   if (has('GULFSTREAM', 'LEARJET', 'CITATION', 'CHALLENGER', 'FALCON',
           'HAWKER', 'GLOBAL', 'PHENOM')) return ['hi_perf', 0.95];
