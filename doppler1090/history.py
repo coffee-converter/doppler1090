@@ -72,8 +72,8 @@ class Recorder:
         self._conn.executescript(_SCHEMA)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
-        # record the --ppm in force so the recording is self-describing (a later
-        # calibration backfill knows the setting the offsets were measured at).
+        # record the --ppm in force so the recording is self-describing: the
+        # correction the measured frequency offsets were captured at.
         self._conn.execute(
             "INSERT INTO sessions (started_at, rx_lat, rx_lon, rx_alt, ppm) "
             "VALUES (?, ?, ?, ?, ?)",

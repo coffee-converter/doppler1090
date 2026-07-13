@@ -93,7 +93,7 @@ default). The map is a fullscreen "scope"; a left panel and a bottom scrubber fl
   oscillator offset in ppm** - a robust median over a rolling 24 h window, with a suggested
   `--ppm` - turning passing aircraft into a frequency reference that calibrates your SDR. It
   accumulates across sessions and is invariant to the `--ppm` in force (offsets from every
-  setting combine); `--backfill-calibration` seeds it from your recorded history.
+  setting combine).
 
 ## Install & run
 
@@ -119,20 +119,11 @@ download of the FAA aircraft registry for offline, US-complete coverage (it fill
 private/GA tails the API misses). Lookups run on a background thread, so a miss just fills
 in on a later frame and never blocks capture.
 
-The oscillator estimate accrues live, but you can seed it from recordings you already have:
-
-```sh
-doppler1090 --backfill-calibration                  # ingest recorded sessions, then exit
-```
-
-Each run records to `./doppler1090-data/` (tagged with the `--ppm` in use, so the recordings
-are self-describing); `--backfill-calibration` replays them through the clock fit to seed the
-ppm estimate. Once the estimate settles, pass the suggested value as `--ppm` and it should
-trend toward zero.
-
-Each run is recorded to `./doppler1090-data/` (one SQLite file per session) so the
-dashboard's time slider can replay it; pass `--no-record` to disable or `--data-dir` to
-put the logs elsewhere.
+Each run is recorded to `./doppler1090-data/` (one SQLite file per session, tagged with the
+`--ppm` in use) so the dashboard's time slider can replay it; pass `--no-record` to disable
+or `--data-dir` to put the logs elsewhere. The dashboard also estimates your receiver's
+oscillator offset in ppm from the aircraft themselves - once it settles, pass the suggested
+value as `--ppm` and it should trend toward zero.
 
 ## Tests
 
