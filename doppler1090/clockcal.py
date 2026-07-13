@@ -38,17 +38,23 @@ class ClockCal:
                 "SELECT icao, ppm, offset_hz, ts FROM clock_ac"):
             self._ac[(icao, ppm_)] = [off, ts]
 
-    def observe(self, consts, now):
-        """Record each aircraft's current constant (tagged with the live --ppm)."""
+    def observe(self, consts, now, ppm=None):
+        """Record each aircraft's constant, tagged with the --ppm in force (or an
+        explicit ``ppm`` when backfilling from a recording made at that setting)."""
         if not consts:
             return
+        pp = self.ppm if ppm is None else int(ppm)
         with self._lock:
             for icao, off in consts.items():
-                key = (icao, self.ppm)
+                key = (icao, pp)
                 self._ac[key] = [off, now]
                 self._dirty.add(key)
             if now - self._last_flush >= _FLUSH_S:
                 self._flush(now)
+
+    def flush(self):
+        with self._lock:
+            self._flush(self._last_flush)
 
     def _flush(self, now):
         self._conn.executemany(

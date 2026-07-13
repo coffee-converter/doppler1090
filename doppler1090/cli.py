@@ -140,11 +140,22 @@ def build_parser():
                    help="also fall back to the FAA registry for make/model "
                         "(covers US private/GA aircraft; ~73 MB one-time "
                         "download into --data-dir)")
+    p.add_argument("--backfill-calibration", action="store_true",
+                   help="seed the oscillator calibration from recorded sessions "
+                        "in --data-dir, then exit")
     return p
 
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
+
+    if args.backfill_calibration:
+        from .backfill import backfill_clockcal
+        os.makedirs(args.data_dir, exist_ok=True)
+        res = backfill_clockcal(args.data_dir, max_age=args.max_age)
+        print(f"doppler1090: calibration backfill complete - {res['aircraft']} "
+              f"aircraft from {res['sessions']} session(s), {res['frames']} frames")
+        return
 
     rx_llh = (args.lat, args.lon, args.alt)
     burst_len = int(round(BURST_US * args.fs / 1e6)) + 8
@@ -155,7 +166,7 @@ def main(argv=None):
     if not args.no_record:
         path = os.path.join(args.data_dir,
                             time.strftime("session-%Y%m%d-%H%M%S.sqlite"))
-        recorder = Recorder(path, rx_llh)
+        recorder = Recorder(path, rx_llh, ppm=args.ppm)
         history = History(path, max_age=args.max_age)
         print(f"recording session to {path}")
     store = TrackStore(max_age=args.max_age, recorder=recorder)

@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS sessions (
     started_at REAL,
     rx_lat     REAL,
     rx_lon     REAL,
-    rx_alt     REAL
+    rx_alt     REAL,
+    ppm        INTEGER
 );
 CREATE TABLE IF NOT EXISTS state_log (
     t         REAL,
@@ -64,18 +65,20 @@ class Recorder:
     """Append-only writer for one session. All calls happen on the capture
     thread, buffered per IQ chunk and flushed in a single transaction."""
 
-    def __init__(self, path, rx_llh, started_at=None):
+    def __init__(self, path, rx_llh, started_at=None, ppm=0):
         os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         self.path = path
         self._conn = sqlite3.connect(path, check_same_thread=False)
         self._conn.executescript(_SCHEMA)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
+        # record the --ppm in force so the recording is self-describing (a later
+        # calibration backfill knows the setting the offsets were measured at).
         self._conn.execute(
-            "INSERT INTO sessions (started_at, rx_lat, rx_lon, rx_alt) "
-            "VALUES (?, ?, ?, ?)",
+            "INSERT INTO sessions (started_at, rx_lat, rx_lon, rx_alt, ppm) "
+            "VALUES (?, ?, ?, ?, ?)",
             (started_at if started_at is not None else time.time(),
-             rx_llh[0], rx_llh[1], rx_llh[2]))
+             rx_llh[0], rx_llh[1], rx_llh[2], int(ppm)))
         self._conn.commit()
         self._states = []
         self._bursts = []
@@ -122,6 +125,13 @@ class History:
         self.path = path
         self.max_age = max_age
         self.lookback = lookback
+        self._sig = None      # lazily: does burst_log have the signal column?
+
+    def _has_signal(self, conn):
+        if self._sig is None:
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(burst_log)")]
+            self._sig = "signal" in cols   # False for pre-signal recordings
+        return self._sig
 
     def _read(self):
         # Fresh read-only connection per request thread (WAL allows concurrent
@@ -165,8 +175,9 @@ class History:
         """The aircraft's burst run ending at/before ``at``, cut at the first
         gap longer than max_age (so a previous pass never pollutes the fit -
         exactly what live prune() does)."""
+        sig = ", signal" if self._has_signal(conn) else ""
         rows = conn.execute(
-            "SELECT t, f_offset, doppler_pred, lat, lon, track, signal FROM "
+            f"SELECT t, f_offset, doppler_pred, lat, lon, track{sig} FROM "
             "burst_log WHERE icao = ? AND t > ? AND t <= ? ORDER BY t",
             (icao, at - self.lookback, at)).fetchall()
         if not rows:
@@ -175,8 +186,9 @@ class History:
         for i in range(1, len(rows)):
             if rows[i][0] - rows[i - 1][0] > self.max_age:
                 start = i  # gap: everything before restarts a fresh pass
-        return [Sample(t, f, d, lat, lon, trk, sig or 0.0)
-                for (t, f, d, lat, lon, trk, sig) in rows[start:]]
+        return [Sample(r[0], r[1], r[2], r[3], r[4], r[5],
+                       (r[6] if len(r) > 6 else 0.0) or 0.0)
+                for r in rows[start:]]
 
     def _latest_state(self, conn, icao, at):
         """Newest-non-null-wins across recent state_log rows - reproduces how
