@@ -64,7 +64,7 @@ class Records:
                 (metric, rec["value"], *(who[f] for f in _FIELDS), now))
             self._conn.commit()
 
-    def _backfill(self, who):
+    def _fill_identity(self, who):
         """A record is often set before the type lookup resolves; once it does,
         patch make/model/reg (and a missing flight) onto records this same
         aircraft still holds."""
@@ -89,7 +89,7 @@ class Records:
         """Fold one live aircraft's snapshot dict into the records."""
         who = {f: a.get(f) for f in _FIELDS}
         if who["icao"] and (who["make"] or who["model"] or who["reg"]):
-            self._backfill(who)
+            self._fill_identity(who)
 
         def rec(metric, value):
             self._update(metric, value, who, now)
