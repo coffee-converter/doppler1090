@@ -44,8 +44,9 @@ A straight pipeline from raw IQ to a measured-vs-predicted comparison:
 | Decode | `decode.py`, `correct.py` | Vectorized PPM demodulation to a bit matrix; Mode S / ADS-B decode with CRC-syndrome error correction. |
 | Estimate | `estimate.py` | Per-burst carrier-frequency offset from the recovered phase. |
 | Predict | `geometry.py` | Predicted Doppler from the aircraft's ADS-B position/velocity and the receiver location (ECEF geometry). |
-| Track | `track.py` | Accumulates per-aircraft offset tracks over a pass and template-fits them against the predicted curve, with a pass-quality score that surfaces the clean straight-line passes where the measurement is trustworthy. |
+| Track | `track.py` | Accumulates per-aircraft offset tracks over a pass and template-fits them against the predicted curve, with a joint clock model shared across all aircraft (the basis of the ppm self-calibration) and a pass-quality score that surfaces the clean straight-line passes where the measurement is trustworthy. |
 | Record | `history.py` | Appends every decoded state message and Doppler burst to a per-session SQLite log, and reconstructs the full state as of any past instant for the dashboard's time slider. |
+| Accrue | `records.py`, `coverage.py`, `clockcal.py` | Persistent all-time stores: extreme-value records, per-bearing reception coverage, and the accumulated oscillator-offset calibration. |
 | Display | `terminal.py`, `server.py`, `web/` | A live `rich` terminal table, plus a browser dashboard with a time-travel scrubber, served locally. |
 
 The whole thing is vectorized with NumPy - candidate bursts are demodulated as one
@@ -59,26 +60,40 @@ default). The map is a fullscreen "scope"; a left panel and a bottom scrubber fl
 - **Map.** Live aircraft over **FAA aeronautical charts** - the same public-domain VFR
   sectionals SkyVector uses, served straight from the FAA's tile service, with a layer
   switcher for the VFR Sectional, an auto **IFR** enroute chart (high-altitude when zoomed
-  out, low-altitude when zoomed in), or plain OpenStreetMap for outside US coverage. Each
-  aircraft is a **type-accurate silhouette** aligned to its heading; its ground track is
-  painted as a smooth **Doppler gradient** - blue approaching, through white at closest
-  approach, to red receding - interpolated from the predicted curve so the colour reads
-  correctly even across a coarse or overhead segment. The receiver is marked in gold with
-  concentric nautical-mile range rings, and the selected aircraft gets a line-of-sight to
-  the receiver. When an aircraft stops transmitting it lingers as a fading, desaturated
+  out, low-altitude when zoomed in), or plain OpenStreetMap for outside US coverage, plus an
+  optional **Coverage** overlay that draws your per-bearing farthest-heard range as a
+  reception footprint around the receiver. Each aircraft is a **type-accurate silhouette**
+  aligned to its heading and stacked by altitude (highest on top); click one - or click a
+  congested cluster repeatedly - to cycle through the planes under the pointer. Its ground
+  track is painted as a smooth **Doppler gradient** - blue approaching, through white at
+  closest approach, to red receding - interpolated from the predicted curve so the colour
+  reads correctly even across a coarse or overhead segment. The receiver is marked in gold
+  with concentric nautical-mile range rings, and the selected aircraft gets a line-of-sight
+  to the receiver. When an aircraft stops transmitting it lingers as a fading, desaturated
   "ghost" for a few minutes before dropping off, so recent passes stay in view.
-- **Left panel.** A status header (receiver, uptime, aircraft count, decode rate) over a
-  list of aircraft cards - callsign, type, fit confidence, and a Doppler sparkline - in
-  stable first-seen order. Silent aircraft collapse to compact pills; click one to expand
-  it. The expanded card names the aircraft's **make, model, and registration** and shows a
-  **photo** when one is available (all resolved from its Mode S address - see below), then
-  plots its **measured vs. predicted** Doppler over the whole pass (blue points = measured
-  per-burst offset, green line = the curve predicted from its ADS-B state vector, with 0 Hz
-  centered), above its fit stats - correlation, confidence, burst count - and its range,
-  altitude, speed, and track.
+- **Left panel.** A status header - an **SDR status light** (green receiving / amber no-ADS-B
+  / red offline), receiver, uptime, aircraft count, decode rate, and the estimated
+  **oscillator offset** (see Calibration below) - above a rotating **all-time records** ticker
+  (fastest/slowest, highest/lowest, biggest climb/descent, farthest/nearest, strongest/
+  weakest signal, widest Doppler swing, each with the flight that set it) and a list of
+  aircraft cards - callsign, type, fit confidence, and a Doppler sparkline - in stable
+  first-seen order. Silent aircraft collapse to compact pills; click one to expand it. The
+  expanded card names the aircraft's **make, model, and registration** and shows a **photo**
+  when one is available (all resolved from its Mode S address - see below), then plots its
+  **measured vs. predicted** Doppler over the whole pass (blue points = measured per-burst
+  offset, green line = the curve predicted from its ADS-B state vector, with 0 Hz centered),
+  above its fit stats - correlation, confidence, burst count, signal strength - and its
+  range, altitude, speed, and track.
 - **Time travel.** Every session is recorded, so the bottom scrubber can replay it: drag
   the playhead or hit play to animate past aircraft tracks over an activity-density strip,
   then jump back to **LIVE**. Capture keeps running and recording the whole time you scrub.
+- **Self-calibration.** Since every aircraft transmits its own position, the *predicted*
+  Doppler is known, and the leftover offset is the receiver's own clock error. doppler1090
+  fits a clock model shared across all aircraft in view and reports the estimated **receiver
+  oscillator offset in ppm** - a robust median over a rolling 24 h window, with a suggested
+  `--ppm` - turning passing aircraft into a frequency reference that calibrates your SDR. It
+  accumulates across sessions and is invariant to the `--ppm` in force (offsets from every
+  setting combine); `--backfill-calibration` seeds it from your recorded history.
 
 ## Install & run
 
@@ -103,6 +118,17 @@ cached to the data dir and shared across sessions. `--faa-registry` adds a one-t
 download of the FAA aircraft registry for offline, US-complete coverage (it fills in the
 private/GA tails the API misses). Lookups run on a background thread, so a miss just fills
 in on a later frame and never blocks capture.
+
+The oscillator estimate accrues live, but you can seed it from recordings you already have:
+
+```sh
+doppler1090 --backfill-calibration                  # ingest recorded sessions, then exit
+```
+
+Each run records to `./doppler1090-data/` (tagged with the `--ppm` in use, so the recordings
+are self-describing); `--backfill-calibration` replays them through the clock fit to seed the
+ppm estimate. Once the estimate settles, pass the suggested value as `--ppm` and it should
+trend toward zero.
 
 Each run is recorded to `./doppler1090-data/` (one SQLite file per session) so the
 dashboard's time slider can replay it; pass `--no-record` to disable or `--data-dir` to
