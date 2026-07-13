@@ -101,13 +101,14 @@ Requires Python 3.11+ and an **RTL-SDR Blog v4** dongle (its ~1 ppm TCXO is stab
 over a single pass for the differential method above) with an antenna for 1090 MHz.
 
 The receiver's location is required - it's the reference point the predicted Doppler is
-computed against - so pass your antenna's latitude and longitude:
+computed against - so pass your antenna's latitude and longitude (and, for accurate range,
+its elevation in feet via `--alt`):
 
 ```sh
 pip install -e .
 doppler1090 --help
 doppler1090 --lat 41.88 --lon -87.63                 # live rich terminal table
-doppler1090 --lat 41.88 --lon -87.63 --web           # + browser dashboard (default :8080)
+doppler1090 --lat 41.88 --lon -87.63 --alt 600 --web # + browser dashboard (default :8080)
 doppler1090 --lat 41.88 --lon -87.63 --web --faa-registry   # + offline US make/model lookup
 ```
 

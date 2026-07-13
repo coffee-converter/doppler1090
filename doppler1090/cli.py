@@ -11,6 +11,7 @@ from .decode import demodulate, decode
 from .estimate import estimate_burst_offset
 from .decode import _chip_indices, bits_to_hex
 from .track import TrackStore
+from .geometry import FT_TO_M
 from .history import Recorder, History
 from . import aircraft
 from .records import Records
@@ -101,7 +102,8 @@ def build_parser():
     p = argparse.ArgumentParser(prog="doppler1090")
     p.add_argument("--lat", type=float, required=True)
     p.add_argument("--lon", type=float, required=True)
-    p.add_argument("--alt", type=float, default=0.0)
+    p.add_argument("--alt", type=float, default=0.0,
+                   help="receiver antenna elevation in feet (default 0)")
     p.add_argument("--gain", type=float, default=40.0)
     p.add_argument("--ppm", type=int, default=0)
     p.add_argument("--freq", type=int, default=DEFAULT_FREQ)
@@ -146,7 +148,7 @@ def build_parser():
 def main(argv=None):
     args = build_parser().parse_args(argv)
 
-    rx_llh = (args.lat, args.lon, args.alt)
+    rx_llh = (args.lat, args.lon, args.alt * FT_TO_M)   # --alt is feet; geometry wants metres
     burst_len = int(round(BURST_US * args.fs / 1e6)) + 8
     max_fix = 2 if args.aggressive else 1
     min_conf = 0.0 if args.show_all else args.min_confidence

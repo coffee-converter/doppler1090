@@ -1,7 +1,7 @@
 import threading
 import numpy as np
 from dataclasses import dataclass
-from .geometry import radial_velocity, predicted_doppler
+from .geometry import radial_velocity, predicted_doppler, FT_TO_M
 
 KT_TO_MPS = 0.514444
 FPM_TO_MPS = 0.00508
@@ -96,7 +96,7 @@ class TrackStore:
         s = self._state.get(icao, {})
         if not all(k in s for k in ("lat", "lon", "alt", "speed", "track", "vrate")):
             return
-        vr = radial_velocity(rx_llh, (s["lat"], s["lon"], s["alt"]),
+        vr = radial_velocity(rx_llh, (s["lat"], s["lon"], s["alt"] * FT_TO_M),
                              s["speed"], s["track"], s["vrate"])
         self._inject(icao, t, f_offset, predicted_doppler(vr),
                      s["lat"], s["lon"], s["track"], signal)

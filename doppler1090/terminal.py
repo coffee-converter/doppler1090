@@ -2,7 +2,7 @@ import numpy as np
 from dataclasses import dataclass
 from rich.console import Console
 from rich.table import Table
-from .geometry import geodetic_to_ecef
+from .geometry import geodetic_to_ecef, FT_TO_M
 
 _console = Console()
 
@@ -57,7 +57,7 @@ def build_rows(store, rx_llh, min_conf=0.0):
         s = store.latest(icao)
         rng_km = 0.0
         if all(k in s for k in ("lat", "lon", "alt")):
-            ac = geodetic_to_ecef(s["lat"], s["lon"], s["alt"])
+            ac = geodetic_to_ecef(s["lat"], s["lon"], s["alt"] * FT_TO_M)
             rng_km = float(np.linalg.norm(ac - rx) / 1000.0)
         samples = store._samples[icao]
         rows.append(Row(

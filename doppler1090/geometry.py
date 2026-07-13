@@ -3,6 +3,7 @@ from .constants import F0_HZ, C_M_S
 
 WGS84_A = 6378137.0
 WGS84_E2 = 6.69437999014e-3
+FT_TO_M = 0.3048    # ADS-B altitude is feet; geodetic_to_ecef wants metres
 
 
 def geodetic_to_ecef(lat_deg, lon_deg, alt_m):

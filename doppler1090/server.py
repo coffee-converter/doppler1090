@@ -6,7 +6,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 import numpy as np
-from .geometry import geodetic_to_ecef
+from .geometry import geodetic_to_ecef, FT_TO_M
 from .terminal import confidence
 
 
@@ -73,7 +73,7 @@ def build_snapshot(store, rx_llh, min_conf=0.0, at=None, server_time=None,
         samples = store._samples[icao]
         rng_km = 0.0
         if all(k in s for k in ("lat", "lon", "alt")):
-            ac = geodetic_to_ecef(s["lat"], s["lon"], s["alt"])
+            ac = geodetic_to_ecef(s["lat"], s["lon"], s["alt"] * FT_TO_M)
             rng_km = float(np.linalg.norm(ac - rx) / 1000.0)
         t0 = samples[0].t
         measured = fit.measured_doppler
