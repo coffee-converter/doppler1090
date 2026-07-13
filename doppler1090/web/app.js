@@ -742,7 +742,7 @@ function renderMeta(meta, a, ghostSince) {
   ]);
   const secondary = grid('secondary', [
     ['scale', a.scale], ['corr', a.corr], ['conf', a.conf], ['bursts', a.bursts],
-    ['sig', a.rssi != null ? Math.round(a.rssi) : '-', a.rssi != null ? 'dB' : ''],
+    ['sig', a.rssi != null ? Math.round(a.rssi) : '-', a.rssi != null ? 'dBFS' : ''],
   ]);
   const head = el('div', 'callsign', a.flight || a.icao);
   const frag = [head];
@@ -809,8 +809,8 @@ const RECORD_SPECS = [
   { key: 'vrate_min_fpm', label: 'steepest descent', unit: ' fpm', d: 0, cls: 'vrt' },
   { key: 'range_nm',      label: 'farthest',         unit: ' nm',  d: 0, cls: 'rng' },
   { key: 'closest_nm',    label: 'nearest',          unit: ' nm',  d: 1, cls: 'rng' },
-  { key: 'sig_max_db',    label: 'strongest signal', unit: ' dB',  d: 0, cls: 'sig' },
-  { key: 'sig_min_db',    label: 'weakest signal',   unit: ' dB',  d: 0, cls: 'sig' },
+  { key: 'sig_max_db',    label: 'strongest signal', unit: ' dBFS', d: 0, cls: 'sig' },
+  { key: 'sig_min_db',    label: 'weakest signal',   unit: ' dBFS', d: 0, cls: 'sig' },
   { key: 'dop_span_hz',   label: 'widest Δf',        unit: ' Hz',  d: 0, cls: 'dop' },
 ];
 let recordIdx = 0;
