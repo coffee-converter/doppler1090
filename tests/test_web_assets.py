@@ -34,3 +34,12 @@ def test_app_js_highlights_selected_aircraft():
     assert "planeIcon" in js               # rotated airplane icon
     assert "divIcon" in js                 # built as a Leaflet divIcon
     assert "setIcon" in js                 # icon updated on selection/heading
+
+
+def test_records_carousel_is_clickable():
+    js = _read("app.js")
+    # the records carousel advances on click, and a manual tap resets the timer
+    assert "recordTimer" in js
+    assert "h-record" in js and "addEventListener('click'" in js.replace('"', "'")
+    # a tappable affordance in the styles
+    assert "cursor: pointer" in _read("style.css") or "cursor:pointer" in _read("style.css")

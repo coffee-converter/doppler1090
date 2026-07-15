@@ -1,0 +1,154 @@
+import json
+import urllib.error
+import urllib.parse
+
+import pytest
+
+import doppler1090.aircraft as aircraft
+from doppler1090.aircraft import TypeStore, _norm_type
+
+
+def _store(tmp_path):
+    return TypeStore(str(tmp_path / "types.db"))
+
+
+class _FakeResp:
+    def __init__(self, payload):
+        self._data = json.dumps(payload).encode()
+
+    def read(self):
+        return self._data
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+
+def _stub_urlopen(monkeypatch, payload):
+    monkeypatch.setattr(aircraft.urllib.request, "urlopen",
+                        lambda req, timeout=0: _FakeResp(payload))
+
+
+# ---- _norm_type -----------------------------------------------------------
+
+def test_norm_type_strips_corporate_suffixes():
+    assert _norm_type("CIRRUS DESIGN CORP", "SR22T") == "CIRRUS SR22T"
+
+
+def test_norm_type_collapses_whitespace_and_uppercases():
+    assert _norm_type("  boeing  co ", "737-800") == "BOEING 737-800"
+
+
+def test_norm_type_none_when_empty_after_stripping():
+    assert _norm_type(None, None) is None
+    assert _norm_type("INC", "   ") is None
+
+
+# ---- _wiki_photo ----------------------------------------------------------
+
+def _commons_payload():
+    return {"batchcomplete": "", "query": {"pages": {
+        "999": {  # lower search rank, listed first in dict to test ordering
+            "index": 2, "title": "File:Other.svg",
+            "imageinfo": [{"mime": "image/svg+xml",
+                           "thumburl": "https://upload/other.svg",
+                           "descriptionurl": "https://commons/File:Other.svg",
+                           "extmetadata": {}}]},
+        "123": {
+            "index": 1, "title": "File:Cirrus SR22.jpg",
+            "imageinfo": [{"mime": "image/jpeg",
+                           "thumburl": "https://upload/thumb.jpg",
+                           "descriptionurl": "https://commons/File:Cirrus_SR22.jpg",
+                           "extmetadata": {"Artist": {
+                               "value": "<a href='/x'>Jane Doe</a>"}}}]},
+    }}}
+
+
+def test_wiki_photo_parses_first_photo_and_strips_html_credit(tmp_path, monkeypatch):
+    _stub_urlopen(monkeypatch, _commons_payload())
+    info = _store(tmp_path)._wiki_photo("CIRRUS SR22T")
+    assert info == {"url": "https://upload/thumb.jpg",
+                    "link": "https://commons/File:Cirrus_SR22.jpg",
+                    "by": "Jane Doe"}
+
+
+def test_wiki_photo_skips_non_photo_mimes(tmp_path, monkeypatch):
+    payload = {"query": {"pages": {"1": {
+        "index": 1, "imageinfo": [{"mime": "image/svg+xml",
+                                   "thumburl": "https://upload/logo.svg",
+                                   "descriptionurl": "x", "extmetadata": {}}]}}}}
+    _stub_urlopen(monkeypatch, payload)
+    assert _store(tmp_path)._wiki_photo("LOGO CO") is None
+
+
+def test_wiki_photo_biases_query_toward_real_aircraft(tmp_path, monkeypatch):
+    seen = {}
+
+    def capture(req, timeout=0):
+        seen["url"] = req.full_url
+        return _FakeResp({"batchcomplete": ""})
+
+    monkeypatch.setattr(aircraft.urllib.request, "urlopen", capture)
+    _store(tmp_path)._wiki_photo("CIRRUS SR22T")
+    # "aircraft" is appended so RC-model / toy photos don't outrank real ones
+    assert "aircraft" in urllib.parse.unquote(seen["url"])
+
+
+def test_wiki_photo_none_on_empty_results(tmp_path, monkeypatch):
+    _stub_urlopen(monkeypatch, {"batchcomplete": ""})   # no query key at all
+    assert _store(tmp_path)._wiki_photo("NOPE ZZZ") is None
+
+
+def test_wiki_photo_raises_on_server_error(tmp_path, monkeypatch):
+    def boom(req, timeout=0):
+        raise urllib.error.HTTPError(req.full_url, 503, "busy", {}, None)
+    monkeypatch.setattr(aircraft.urllib.request, "urlopen", boom)
+    with pytest.raises(urllib.error.HTTPError):
+        _store(tmp_path)._wiki_photo("X Y")
+
+
+# ---- get_photo fallback ordering + caching --------------------------------
+
+def test_reg_photo_takes_precedence_over_type_photo(tmp_path):
+    store = _store(tmp_path)
+    store._photo_mem["N1"] = {"url": "real", "link": "l", "by": "b"}
+    store._type_photo_mem[_norm_type("CIRRUS", "SR22T")] = {
+        "url": "type", "link": "", "by": ""}
+    info = {"make": "CIRRUS", "model": "SR22T", "reg": "N1"}
+    assert store.get_photo("N1", info)["url"] == "real"
+
+
+def test_get_photo_falls_back_to_type_photo_on_reg_miss(tmp_path):
+    store = _store(tmp_path)
+    store._photo_mem["N26MR"] = None                    # reg confirmed no photo
+    store._type_photo_mem[_norm_type("CIRRUS DESIGN CORP", "SR22T")] = {
+        "url": "u", "link": "l", "by": "b"}
+    info = {"make": "CIRRUS DESIGN CORP", "model": "SR22T", "reg": "N26MR"}
+    assert store.get_photo("N26MR", info) == {"url": "u", "link": "l", "by": "b"}
+
+
+def test_type_photo_served_from_cache_without_refetch(tmp_path, monkeypatch):
+    store = _store(tmp_path)
+    calls = []
+
+    def fake_wiki(query):
+        calls.append(query)
+        return {"url": "u", "link": "l", "by": "b"}
+
+    monkeypatch.setattr(store, "_wiki_photo", fake_wiki)
+    key = _norm_type("CIRRUS", "SR22T")
+    info, source = store._resolve_type_photo(key)
+    assert source == "wikimedia" and info["url"] == "u"
+    store._type_photo_mem[key] = info                   # as the worker would
+    # a cached type is returned with no further HTTP
+    assert store._type_photo("CIRRUS", "SR22T") == info
+    assert len(calls) == 1
+
+
+def test_resolve_type_photo_caches_miss(tmp_path, monkeypatch):
+    store = _store(tmp_path)
+    monkeypatch.setattr(store, "_wiki_photo", lambda q: None)
+    info, source = store._resolve_type_photo("NOPE ZZZ")
+    assert info is None and source == "none"

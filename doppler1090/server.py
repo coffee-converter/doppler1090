@@ -87,7 +87,7 @@ def build_snapshot(store, rx_llh, min_conf=0.0, at=None, server_time=None,
         # calling get()/get_photo() schedules a background lookup on first sight)
         info = type_store.get(icao) if type_store is not None else None
         reg = (info or {}).get("reg")
-        photo = (type_store.get_photo(reg)
+        photo = (type_store.get_photo(reg, info)
                  if (type_store is not None and reg) else None)
         # signal strength: mean burst amplitude over the window, as dBFS
         sigs = [x.signal for x in samples if x.signal > 0]

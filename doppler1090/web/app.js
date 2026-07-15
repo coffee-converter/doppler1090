@@ -1092,5 +1092,12 @@ pollTimeline();
 setInterval(() => { if (mode === 'live') fetchState(null); }, 1000);
 setInterval(pollTimeline, 2000);
 tickRecord();
-setInterval(tickRecord, 5000);   // rotate the all-time record on show
+let recordTimer = setInterval(tickRecord, 5000);   // rotate the all-time record on show
+// Click/tap the carousel to advance now; reset the timer so it doesn't
+// immediately auto-advance again on top of the manual step.
+document.getElementById('h-record')?.addEventListener('click', () => {
+  tickRecord();
+  clearInterval(recordTimer);
+  recordTimer = setInterval(tickRecord, 5000);
+});
 window.addEventListener('resize', () => { drawPlot(); drawTimeline(); });

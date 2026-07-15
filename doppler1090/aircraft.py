@@ -16,13 +16,16 @@ failures (timeouts, rate limits) are NOT cached, so they retry; only genuine
 """
 
 import csv
+import html
 import io
 import json
 import queue
+import re
 import sqlite3
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 
@@ -34,7 +37,33 @@ PLANESPOTTERS = "https://api.planespotters.net/pub/photos/reg/{}"
 # airport-data.com is the fallback photo source (different pool; some GA tails
 # planespotters lacks). Returns a thumbnail, a photo-page link and a credit.
 AIRPORTDATA = "https://airport-data.com/api/ac_thumb.json?r={}&n=1"
+# Wikimedia Commons: the last-resort photo source, keyed by make/model rather
+# than tail. When a specific aircraft has no photo anywhere, a public-domain / CC
+# image of the *type* is a useful stand-in. No API key; requires a descriptive UA.
+WIKI_API = "https://commons.wikimedia.org/w/api.php"
 UA = "doppler1090/1.0 (+https://github.com/coffee-converter/doppler1090)"
+
+# Corporate suffixes dropped from the manufacturer name before searching/keying
+# so "CIRRUS DESIGN CORP" and adsbdb's "CIRRUS" collapse to one type ("CIRRUS
+# SR22T") - both a cleaner Wikimedia query and a shared cache key across sources.
+_CORP_SUFFIXES = {"DESIGN", "CORP", "CORPORATION", "INC", "CO", "LLC", "LTD",
+                  "COMPANY", "AVIATION", "AIRCRAFT", "INDUSTRIES", "GMBH",
+                  "AG", "SA"}
+_TAG = re.compile(r"<[^>]+>")
+
+
+def _norm_type(make, model):
+    """Normalized make/model key ("CIRRUS SR22T"), or None if empty. Strips
+    corporate suffixes from the make; used as both Wikimedia query and cache key."""
+    words = [w for w in (make or "").upper().split() if w not in _CORP_SUFFIXES]
+    words += (model or "").upper().split()
+    return " ".join(words) or None
+
+
+def _strip_html(s):
+    """Plain-text credit from a Wikimedia extmetadata Artist value (often an
+    <a> tag): drop tags and unescape entities."""
+    return html.unescape(_TAG.sub("", s or "")).strip()
 
 
 class TypeStore:
@@ -54,6 +83,9 @@ class TypeStore:
         self._conn.execute(
             "CREATE TABLE IF NOT EXISTS photo_cache (reg TEXT PRIMARY KEY, "
             "url TEXT, link TEXT, by TEXT, source TEXT, ts REAL)")
+        self._conn.execute(
+            "CREATE TABLE IF NOT EXISTS type_photo_cache (key TEXT PRIMARY KEY, "
+            "url TEXT, link TEXT, by TEXT, source TEXT, ts REAL)")
         self._conn.commit()
         self._lock = threading.Lock()   # guards all _conn access
         self._mem = {}                  # icao -> {make,model,reg,type} | None
@@ -66,7 +98,13 @@ class TypeStore:
                 "SELECT reg, url, link, by, source FROM photo_cache"):
             self._photo_mem[reg] = None if source == "none" else {
                 "url": url, "link": link, "by": by}
-        self._q = queue.Queue()         # items: ("type", icao) | ("photo", reg)
+        self._type_photo_mem = {}       # make/model key -> {url,link,by} | None
+        for key, url, link, by, source in self._conn.execute(
+                "SELECT key, url, link, by, source FROM type_photo_cache"):
+            self._type_photo_mem[key] = None if source == "none" else {
+                "url": url, "link": link, "by": by}
+        # queue items: ("type", icao) | ("photo", reg) | ("typephoto", key)
+        self._q = queue.Queue()
         self._queued = set()            # in-flight items (avoid duplicates)
         self._adsb_missed = set()       # tried adsbdb already, awaiting FAA
         self._faa_ready = self._count("faa") > 0
@@ -82,12 +120,31 @@ class TypeStore:
         self._enqueue(("type", icao))
         return None
 
-    def get_photo(self, reg):
-        """Cached photo {url,link,by} or None; schedules a lookup on a miss."""
+    def get_photo(self, reg, info=None):
+        """Cached photo {url,link,by} or None; schedules a lookup on a miss. When
+        the tail has no photo in any reg-keyed source, falls back to a photo of
+        the aircraft's make/model (from ``info``), if available."""
         reg = reg.upper()
-        if reg in self._photo_mem:
-            return self._photo_mem[reg]
-        self._enqueue(("photo", reg))
+        if reg not in self._photo_mem:
+            self._enqueue(("photo", reg))
+            return None
+        photo = self._photo_mem[reg]
+        if photo is not None:
+            return photo
+        # reg confirmed to have no photo -> stand in with a make/model type photo
+        if info:
+            return self._type_photo(info.get("make"), info.get("model"))
+        return None
+
+    def _type_photo(self, make, model):
+        """Cached make/model photo {url,link,by} or None; schedules a Wikimedia
+        lookup on a miss. Shared across every tail of the same type."""
+        key = _norm_type(make, model)
+        if key is None:
+            return None
+        if key in self._type_photo_mem:
+            return self._type_photo_mem[key]
+        self._enqueue(("typephoto", key))
         return None
 
     def _enqueue(self, item):
@@ -101,15 +158,22 @@ class TypeStore:
             kind, key = self._q.get()
             info = source = None
             try:
-                info, source = (self._resolve(key) if kind == "type"
-                                else self._resolve_photo(key))
+                if kind == "type":
+                    info, source = self._resolve(key)
+                elif kind == "photo":
+                    info, source = self._resolve_photo(key)
+                else:                    # "typephoto": make/model key
+                    info, source = self._resolve_type_photo(key)
             except Exception:
                 source = None            # transient: leave unresolved, retry later
             if source is not None:       # definitive answer (hit or real miss)
                 if kind == "type":
                     self._store(key, info, source); self._mem[key] = info
-                else:
+                elif kind == "photo":
                     self._store_photo(key, info, source); self._photo_mem[key] = info
+                else:
+                    self._store_type_photo(key, info, source)
+                    self._type_photo_mem[key] = info
             self._queued.discard((kind, key))
             time.sleep(0.3)              # be polite to the API
 
@@ -216,6 +280,44 @@ class TypeStore:
                 "INSERT OR REPLACE INTO photo_cache (reg, url, link, by, source, "
                 "ts) VALUES (?,?,?,?,?,?)",
                 (reg, info and info["url"], info and info["link"],
+                 info and info["by"], source, time.time()))
+            self._conn.commit()
+
+    def _resolve_type_photo(self, query):
+        """(info, 'wikimedia') on a hit, (None, 'none') if Commons has no usable
+        photo. A transient error raises out so the lookup retries later."""
+        info = self._wiki_photo(query)   # None => no photo; raises on transient
+        return (info, "wikimedia") if info else (None, "none")
+
+    def _wiki_photo(self, query):
+        """First usable Commons photo for a make/model query, as {url,link,by},
+        or None. Searches the File namespace and takes the top-ranked JPEG/PNG."""
+        # "aircraft" biases search relevance toward real airframes so RC-model and
+        # toy photos (whose filenames match the type exactly) don't outrank them.
+        params = {"action": "query", "format": "json", "generator": "search",
+                  "gsrnamespace": 6, "gsrsearch": query + " aircraft", "gsrlimit": 8,
+                  "prop": "imageinfo", "iiprop": "url|extmetadata|mime",
+                  "iiurlwidth": 640}
+        req = urllib.request.Request(
+            WIKI_API + "?" + urllib.parse.urlencode(params),
+            headers={"User-Agent": UA})
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            j = json.load(resp)
+        pages = ((j or {}).get("query") or {}).get("pages") or {}
+        for p in sorted(pages.values(), key=lambda p: p.get("index", 0)):
+            ii = (p.get("imageinfo") or [{}])[0]
+            if ii.get("mime") in ("image/jpeg", "image/png") and ii.get("thumburl"):
+                artist = ((ii.get("extmetadata") or {}).get("Artist") or {})
+                return {"url": ii["thumburl"], "link": ii.get("descriptionurl"),
+                        "by": _strip_html(artist.get("value")) or None}
+        return None
+
+    def _store_type_photo(self, key, info, source):
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO type_photo_cache "
+                "(key, url, link, by, source, ts) VALUES (?,?,?,?,?,?)",
+                (key, info and info["url"], info and info["link"],
                  info and info["by"], source, time.time()))
             self._conn.commit()
 

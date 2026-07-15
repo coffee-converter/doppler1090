@@ -114,8 +114,9 @@ doppler1090 --lat 41.88 --lon -87.63 --web --faa-registry   # + offline US make/
 
 Make, model, and registration are resolved from each aircraft's Mode S address via the free
 [adsbdb](https://www.adsbdb.com/) API, and a photo from
-[planespotters](https://www.planespotters.net/) (falling back to airport-data.com) - all
-cached to the data dir and shared across sessions. `--faa-registry` adds a one-time ~73 MB
+[planespotters](https://www.planespotters.net/) (falling back to airport-data.com, then to a
+[Wikimedia Commons](https://commons.wikimedia.org/) photo of the make/model when a specific
+tail has none) - all cached to the data dir and shared across sessions. `--faa-registry` adds a one-time ~73 MB
 download of the FAA aircraft registry for offline, US-complete coverage (it fills in the
 private/GA tails the API misses). Lookups run on a background thread, so a miss just fills
 in on a later frame and never blocks capture.
