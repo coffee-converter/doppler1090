@@ -234,6 +234,7 @@ function render(state) {
   renderList();
   drawPlot();
   updateHud();
+  refreshRecord();
 }
 
 function removeEntry(icao) {
@@ -818,7 +819,7 @@ const RECORD_SPECS = [
   { key: 'sig_min_db',    label: 'weakest signal',   unit: ' dBFS', d: 0, cls: 'sig' },
   { key: 'dop_span_hz',   label: 'widest Δf',        unit: ' Hz',  d: 0, cls: 'dop' },
 ];
-let recordIdx = 0;
+let recordIdx = -1;   // index of the record currently shown; -1 = none yet
 
 // Human "time since" for all-time records (which may be days old).
 function relTime(ts) {
@@ -840,23 +841,45 @@ function renderRecord(el, spec, r) {
   el.querySelector('.rec-who').textContent = who || r.icao || '';
 }
 
-// Advance to the next record that has data, fading it in.
-function tickRecord() {
+// The record shown is stepped manually with the ‹ › arrows (no auto-rotation).
+// Show the record at index i with a fade, tracking it as the current one.
+function showRecordAt(i) {
+  const el = document.getElementById('h-record');
+  if (!el) return;
+  recordIdx = i;
+  const spec = RECORD_SPECS[i], r = (latest.records || {})[spec.key];
+  el.style.opacity = 0;
+  setTimeout(() => { renderRecord(el, spec, r); el.style.opacity = 1; }, 200);
+}
+
+// Step to the next (dir=+1) or previous (dir=-1) record that has data.
+function stepRecord(dir) {
+  const N = RECORD_SPECS.length, recs = latest.records || {};
+  for (let n = 1; n <= N; n++) {
+    const i = ((recordIdx + dir * n) % N + N) % N;
+    const r = recs[RECORD_SPECS[i].key];
+    if (r && r.value != null) { showRecordAt(i); return; }
+  }
+}
+
+// Called on every state update: keep the shown record's value current, and show
+// the first available record once any exist (the arrows do the navigating).
+function refreshRecord() {
   const el = document.getElementById('h-record');
   if (!el) return;
   const recs = latest.records || {};
+  if (recordIdx >= 0) {
+    const spec = RECORD_SPECS[recordIdx], r = recs[spec.key];
+    if (r && r.value != null) { renderRecord(el, spec, r); return; }
+    recordIdx = -1;                        // current record lost its data
+  }
   for (let n = 0; n < RECORD_SPECS.length; n++) {
-    const i = (recordIdx + n) % RECORD_SPECS.length;
-    const r = recs[RECORD_SPECS[i].key];
+    const r = recs[RECORD_SPECS[n].key];
     if (r && r.value != null) {
-      recordIdx = (i + 1) % RECORD_SPECS.length;
-      const spec = RECORD_SPECS[i];
-      el.style.opacity = 0;
-      setTimeout(() => { renderRecord(el, spec, r); el.style.opacity = 1; }, 200);
-      return;
+      recordIdx = n; renderRecord(el, RECORD_SPECS[n], r); return;
     }
   }
-  el.className = 'record';
+  el.className = 'record';                  // nothing has data yet
   el.querySelector('.rec-label').textContent = 'records';
   el.querySelector('.rec-val').textContent = '–';
   el.querySelector('.rec-date').textContent = '';
@@ -1091,13 +1114,7 @@ fetchState(null);
 pollTimeline();
 setInterval(() => { if (mode === 'live') fetchState(null); }, 1000);
 setInterval(pollTimeline, 2000);
-tickRecord();
-let recordTimer = setInterval(tickRecord, 5000);   // rotate the all-time record on show
-// Click/tap the carousel to advance now; reset the timer so it doesn't
-// immediately auto-advance again on top of the manual step.
-document.getElementById('h-record')?.addEventListener('click', () => {
-  tickRecord();
-  clearInterval(recordTimer);
-  recordTimer = setInterval(tickRecord, 5000);
-});
+refreshRecord();
+document.getElementById('rec-prev')?.addEventListener('click', () => stepRecord(-1));
+document.getElementById('rec-next')?.addEventListener('click', () => stepRecord(1));
 window.addEventListener('resize', () => { drawPlot(); drawTimeline(); });

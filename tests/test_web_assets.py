@@ -36,10 +36,10 @@ def test_app_js_highlights_selected_aircraft():
     assert "setIcon" in js                 # icon updated on selection/heading
 
 
-def test_records_carousel_is_clickable():
+def test_records_carousel_has_prev_next_controls():
     js = _read("app.js")
-    # the records carousel advances on click, and a manual tap resets the timer
-    assert "recordTimer" in js
-    assert "h-record" in js and "addEventListener('click'" in js.replace('"', "'")
-    # a tappable affordance in the styles
-    assert "cursor: pointer" in _read("style.css") or "cursor:pointer" in _read("style.css")
+    html = _read("index.html")
+    # manual prev/next stepping through records (no auto-rotate)
+    assert "stepRecord" in js
+    assert "rec-prev" in html and "rec-next" in html
+    assert ".rec-nav" in _read("style.css")

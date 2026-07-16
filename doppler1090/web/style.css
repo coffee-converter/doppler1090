@@ -54,8 +54,13 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
    seconds - value on top (coloured by metric family), the flight/tail/type/time
    that set it below. */
 #hud .record { margin-top: 8px; font-family: var(--mono);
-               transition: opacity .2s ease; min-height: 30px;
-               cursor: pointer; }   /* tap to advance to the next record */
+               transition: opacity .2s ease; min-height: 30px; }
+/* ‹ › step buttons at the right of the label row */
+#hud .rec-nav { display: inline-flex; align-items: center; gap: 1px; }
+#hud .rec-nav button { font-family: var(--mono); font-size: 15px; line-height: 1;
+                       background: none; border: none; padding: 0 4px;
+                       color: var(--ink-dim); cursor: pointer; opacity: .75; }
+#hud .rec-nav button:hover { opacity: 1; color: var(--ink); }
 /* top row: name, value, then date pushed to the right. */
 #hud .rec-top { display: flex; align-items: baseline; gap: 8px; }
 #hud .rec-label { font-size: 10px; text-transform: uppercase; letter-spacing: .5px;
