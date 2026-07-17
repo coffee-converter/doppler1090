@@ -73,9 +73,10 @@ default). The map is a fullscreen "scope"; a left panel and a bottom scrubber fl
   "ghost" for a few minutes before dropping off, so recent passes stay in view.
 - **Left panel.** A status header - an **SDR status light** (green receiving / amber no-ADS-B
   / red offline), receiver, uptime, aircraft count, decode rate, and the estimated
-  **oscillator offset** (see Calibration below) - above a rotating **all-time records** ticker
+  **oscillator offset** (see Calibration below) - above a steppable **all-time records** panel
   (fastest/slowest, highest/lowest, biggest climb/descent, farthest/nearest, strongest/
-  weakest signal, widest Doppler swing, each with the flight that set it) and a list of
+  weakest signal, widest Doppler swing, each with the flight that set it; page through them
+  with the `‹ ›` arrows) and a list of
   aircraft cards - callsign, type, fit confidence, and a Doppler sparkline - in stable
   first-seen order. Silent aircraft collapse to compact pills; click one to expand it. The
   expanded card names the aircraft's **make, model, and registration** and shows a **photo**
@@ -88,8 +89,9 @@ default). The map is a fullscreen "scope"; a left panel and a bottom scrubber fl
   the playhead or hit play to animate past aircraft tracks over an activity-density strip,
   then jump back to **LIVE**. Capture keeps running and recording the whole time you scrub.
   Any recorded session can also be re-opened later with `--replay <file>`, which plays it
-  back through the same dashboard - auto-playing and looping - with **no SDR required**. It's
-  the easiest way to see doppler1090 without hardware; a sample session ships in `examples/`.
+  back through the same dashboard - auto-playing and looping - with **no SDR required**. A
+  sample session ships with the package, so `doppler1090 --demo --web` is the easiest way to
+  see doppler1090 without any hardware.
 - **Self-calibration.** Since every aircraft transmits its own position, the *predicted*
   Doppler is known, and the leftover offset is the receiver's own clock error. doppler1090
   fits a clock model shared across all aircraft in view and reports the estimated **receiver
@@ -130,7 +132,7 @@ doppler1090 --help
 doppler1090 --lat 41.88 --lon -87.63                 # live rich terminal table
 doppler1090 --lat 41.88 --lon -87.63 --alt 600 --web # + browser dashboard (default :8080)
 doppler1090 --lat 41.88 --lon -87.63 --web --faa-registry   # + offline US make/model lookup
-doppler1090 --replay examples/sample-session.sqlite --web    # no SDR: play the bundled session
+doppler1090 --demo --web                                     # no SDR: replay the bundled sample
 ```
 
 Make, model, and registration are resolved from each aircraft's Mode S address via the free
@@ -154,12 +156,13 @@ value as `--ppm` and it should trend toward zero.
 pip install pytest && pytest      # 92 tests across the pipeline
 ```
 
-Every stage has a unit test (`tests/test_*.py`) - capture, detect, decode, estimate,
-correct, geometry, track, history, terminal, server, CLI, and web assets.
+Most stages have a unit test (`tests/test_*.py`) - aircraft, capture, detect, decode,
+estimate, correct, geometry, track, history, terminal, server, CLI, and web assets. (The
+persistent all-time stores in the Accrue stage don't have direct tests yet.)
 
 ## Built with
 
-Python · NumPy · SciPy · [pyModeS](https://github.com/junzis/pyModeS) (Mode S decoding) ·
+Python · NumPy · [pyModeS](https://github.com/junzis/pyModeS) (Mode S decoding) ·
 [pyrtlsdr](https://github.com/pyrtlsdr/pyrtlsdr) (RTL-SDR capture) · `rich` (terminal UI) ·
 [Leaflet](https://leafletjs.com) with [FAA aeronautical charts](https://www.faa.gov/air_traffic/flight_info/aeronav/)
 and [OpenStreetMap](https://www.openstreetmap.org/copyright) tiles (web map)
@@ -169,7 +172,7 @@ and [OpenStreetMap](https://www.openstreetmap.org/copyright) tiles (web map)
 Licensed under the **GNU General Public License v3.0** - see [LICENSE](LICENSE).
 `doppler1090` links against `pyModeS` and `pyrtlsdr`, both GPLv3, so the combined work is
 distributed under the same terms. The aircraft silhouette icons are the marker set from
-[tar1090](https://github.com/wiedehopf/tar1090) (GPLv3), vendored under `web/vendor/`.
+[tar1090](https://github.com/wiedehopf/tar1090) (GPLv3), vendored under `doppler1090/web/vendor/`.
 
 The name follows the lineage of [`dump1090`](https://github.com/antirez/dump1090)
 (Salvatore Sanfilippo, BSD-3-Clause). doppler1090 is an independent Python project: it
