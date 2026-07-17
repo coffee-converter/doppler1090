@@ -87,6 +87,9 @@ default). The map is a fullscreen "scope"; a left panel and a bottom scrubber fl
 - **Time travel.** Every session is recorded, so the bottom scrubber can replay it: drag
   the playhead or hit play to animate past aircraft tracks over an activity-density strip,
   then jump back to **LIVE**. Capture keeps running and recording the whole time you scrub.
+  Any recorded session can also be re-opened later with `--replay <file>`, which plays it
+  back through the same dashboard - auto-playing and looping - with **no SDR required**. It's
+  the easiest way to see doppler1090 without hardware; a sample session ships in `examples/`.
 - **Self-calibration.** Since every aircraft transmits its own position, the *predicted*
   Doppler is known, and the leftover offset is the receiver's own clock error. doppler1090
   fits a clock model shared across all aircraft in view and reports the estimated **receiver
@@ -94,6 +97,18 @@ default). The map is a fullscreen "scope"; a left panel and a bottom scrubber fl
   `--ppm` - turning passing aircraft into a frequency reference that calibrates your SDR. It
   accumulates across sessions and is invariant to the `--ppm` in force (offsets from every
   setting combine).
+
+## Terminal view
+
+Without `--web` the default view is a live `rich` table built for a headless or SSH session,
+carrying the same essentials as the dashboard. A status header shows an **SDR status light**
+(and a plain-English hint if the dongle isn't found), receiver, uptime, aircraft count,
+decode rate, and the **ppm oscillator estimate with a suggested `--ppm`**. Below it, one row
+per aircraft: callsign (or tail number for GA), make/model, altitude/speed/heading/vertical
+speed, range, signal, and **measured vs. predicted** Doppler side by side - with a trend
+**sparkline** and an all-time **records** line on wider terminals. Columns adapt to the
+window width, shedding the fit diagnostics first so a narrow terminal still keeps the
+essentials on one line each.
 
 ## Install & run
 
@@ -106,7 +121,8 @@ isn't supported without code changes; capture is `pyrtlsdr`-specific.)
 
 The receiver's location is required - it's the reference point the predicted Doppler is
 computed against - so pass your antenna's latitude and longitude (and, for accurate range,
-its elevation in feet via `--alt`):
+its elevation in feet via `--alt`). Replaying a recorded session with `--replay` reads the
+location from the file, so it needs neither `--lat`/`--lon` nor an SDR:
 
 ```sh
 pip install -e .
@@ -114,6 +130,7 @@ doppler1090 --help
 doppler1090 --lat 41.88 --lon -87.63                 # live rich terminal table
 doppler1090 --lat 41.88 --lon -87.63 --alt 600 --web # + browser dashboard (default :8080)
 doppler1090 --lat 41.88 --lon -87.63 --web --faa-registry   # + offline US make/model lookup
+doppler1090 --replay examples/sample-session.sqlite --web    # no SDR: play the bundled session
 ```
 
 Make, model, and registration are resolved from each aircraft's Mode S address via the free
@@ -134,11 +151,11 @@ value as `--ppm` and it should trend toward zero.
 ## Tests
 
 ```sh
-pip install pytest && pytest      # 65 tests across the pipeline
+pip install pytest && pytest      # 92 tests across the pipeline
 ```
 
 Every stage has a unit test (`tests/test_*.py`) - capture, detect, decode, estimate,
-correct, geometry, track, terminal, server, CLI, and web assets.
+correct, geometry, track, history, terminal, server, CLI, and web assets.
 
 ## Built with
 
