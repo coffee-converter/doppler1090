@@ -242,3 +242,36 @@ class History:
                     "buckets": buckets}
         finally:
             conn.close()
+
+    def bounds(self):
+        """The session's own ``(start, end)`` epoch extent - min/max logged
+        timestamp, with no extension to wall-clock now. This is the range the
+        replay playhead sweeps over."""
+        conn = self._read()
+        try:
+            lo, hi = conn.execute(
+                "SELECT MIN(t), MAX(t) FROM ("
+                "SELECT t FROM burst_log WHERE t > 0 "
+                "UNION ALL SELECT t FROM state_log WHERE t > 0)").fetchone()
+        finally:
+            conn.close()
+        return (lo, hi)
+
+
+def read_session_meta(path):
+    """Receiver location and ppm recorded in a session file's ``sessions`` row.
+
+    Returns ``(rx_llh, ppm)`` where ``rx_llh`` is ``(lat, lon, alt_metres)`` -
+    the same reference tuple the live pipeline uses - so replay can reconstruct
+    a recorded session without the user re-entering ``--lat``/``--lon``."""
+    conn = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+    try:
+        row = conn.execute(
+            "SELECT rx_lat, rx_lon, rx_alt, ppm FROM sessions "
+            "ORDER BY id LIMIT 1").fetchone()
+    finally:
+        conn.close()
+    if row is None:
+        raise ValueError(f"{path}: no session metadata (empty sessions table)")
+    lat, lon, alt, ppm = row
+    return (lat, lon, alt), int(ppm or 0)

@@ -12,12 +12,12 @@ from .estimate import estimate_burst_offset
 from .decode import _chip_indices, bits_to_hex
 from .track import TrackStore
 from .geometry import FT_TO_M
-from .history import Recorder, History
+from .history import Recorder, History, read_session_meta
 from . import aircraft
 from .records import Records
 from .coverage import Coverage
-from .clockcal import ClockCal
-from .terminal import build_rows, build_table
+from .clockcal import ClockCal, clock_estimate
+from .terminal import build_rows, build_display
 from . import server
 
 BURST_US = 120.0
@@ -98,10 +98,43 @@ def process_chunk(t, iq, fs, rx_llh, store, burst_len, max_fix=1, phase_search=1
     return added
 
 
+class _BurstRate:
+    """Rolling bursts-per-minute over a short window, for the status header."""
+
+    def __init__(self, window=60.0):
+        self.window = window
+        self._events = []
+
+    def add(self, t, count):
+        if count:
+            self._events.append((t, count))
+        cutoff = t - self.window
+        self._events = [(tt, c) for tt, c in self._events if tt >= cutoff]
+
+    def per_min(self, now):
+        if not self._events:
+            return 0.0
+        total = sum(c for _, c in self._events)
+        elapsed = max(now - self._events[0][0], 5.0)   # avoid early spikes
+        return total * 60.0 / elapsed
+
+
+def _live_status(rx_llh, health, rate, n_aircraft, now):
+    """The terminal status-header dict for the current frame."""
+    return {"rx": (rx_llh[0], rx_llh[1]),
+            "uptime_s": now - health.started,
+            "n_aircraft": n_aircraft,
+            "burst_rate": rate.per_min(now),
+            "sdr_state": health.snapshot(now)["state"],
+            "error": health.error}
+
+
 def build_parser():
     p = argparse.ArgumentParser(prog="doppler1090")
-    p.add_argument("--lat", type=float, required=True)
-    p.add_argument("--lon", type=float, required=True)
+    p.add_argument("--lat", type=float,
+                   help="receiver latitude (required unless --replay)")
+    p.add_argument("--lon", type=float,
+                   help="receiver longitude (required unless --replay)")
     p.add_argument("--alt", type=float, default=0.0,
                    help="receiver antenna elevation in feet (default 0)")
     p.add_argument("--gain", type=float, default=40.0)
@@ -142,11 +175,88 @@ def build_parser():
                    help="also fall back to the FAA registry for make/model "
                         "(covers US private/GA aircraft; ~73 MB one-time "
                         "download into --data-dir)")
+    p.add_argument("--replay", metavar="FILE",
+                   help="replay a recorded session file instead of capturing "
+                        "live - no SDR needed. The receiver location and ppm "
+                        "are read from the file, so --lat/--lon are not needed. "
+                        "Works with --web (dashboard) or the terminal table.")
+    p.add_argument("--replay-speed", type=float, default=1.0,
+                   help="replay playback rate (default 1.0 = real time; "
+                        "2.0 = twice as fast)")
     return p
+
+
+def _run_replay(args):
+    """Play back a recorded session file - no SDR, no capture thread. Receiver
+    location and ppm come from the file, so the same physics and rendering run
+    on reconstructed state exactly as they did live."""
+    if not os.path.exists(args.replay):
+        raise SystemExit(f"doppler1090: replay file not found: {args.replay}")
+    rx_llh, ppm = read_session_meta(args.replay)
+    min_conf = 0.0 if args.show_all else args.min_confidence
+    history = History(args.replay, max_age=args.max_age)
+    t_start, t_end = history.bounds()
+    if t_start is None:
+        raise SystemExit(f"doppler1090: {args.replay} has no data to replay")
+    speed = args.replay_speed if args.replay_speed > 0 else 1.0
+    print(f"replaying {args.replay}: {t_end - t_start:.0f}s at {speed:g}x "
+          f"(rx {rx_llh[0]:.4f},{rx_llh[1]:.4f})")
+    if args.web:
+        return _replay_web(args, history, rx_llh, min_conf, ppm, t_start, t_end,
+                           speed)
+    _replay_terminal(history, rx_llh, min_conf, t_start, t_end, speed)
+
+
+def _replay_terminal(history, rx_llh, min_conf, t_start, t_end, speed):
+    """Terminal replay: a virtual clock sweeps the session at ``speed`` and the
+    table is re-rendered from reconstructed state, looping at the end."""
+    with Live(build_display([]), refresh_per_second=4, screen=True) as live:
+        while True:
+            wall0 = time.monotonic()
+            at = t_start
+            while at < t_end:
+                store = history.reconstruct(at)
+                rows = build_rows(store, rx_llh, min_conf=min_conf)
+                status = {"rx": (rx_llh[0], rx_llh[1]),
+                          "uptime_s": at - t_start,
+                          "n_aircraft": len(rows),
+                          "sdr_state": "replay"}
+                live.update(build_display(rows, status, None,
+                                          live.console.size.width))
+                time.sleep(0.25)
+                at = t_start + (time.monotonic() - wall0) * speed
+
+
+def _replay_web(args, history, rx_llh, min_conf, ppm, t_start, t_end, speed):
+    """Web replay: serve the dashboard against the file. The live store stays
+    empty - the browser's scrubber drives reconstruction over [t_start, t_end]
+    and loops. Enrichment stores are wired so make/model/photos still resolve."""
+    os.makedirs(args.data_dir, exist_ok=True)
+    store = TrackStore(max_age=args.max_age)
+    type_store = None
+    if not args.no_lookup:
+        type_store = aircraft.TypeStore(
+            os.path.join(args.data_dir, "aircraft.sqlite"),
+            use_faa=args.faa_registry)
+    records = Records(os.path.join(args.data_dir, "records.sqlite"))
+    coverage = Coverage(os.path.join(args.data_dir, "coverage.sqlite"))
+    clockcal = ClockCal(os.path.join(args.data_dir, "clockcal.sqlite"), ppm=ppm)
+    server.serve(store, rx_llh, store.lock, min_conf, args.port,
+                 open_browser=True, history=history, type_store=type_store,
+                 health=None, records=records, coverage=coverage,
+                 clockcal=clockcal,
+                 replay={"t_start": t_start, "t_end": t_end, "speed": speed})
 
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
+
+    if args.replay:
+        return _run_replay(args)
+    if args.lat is None or args.lon is None:
+        raise SystemExit("doppler1090: --lat and --lon are required "
+                         "(or use --replay FILE to play back a recorded "
+                         "session)")
 
     rx_llh = (args.lat, args.lon, args.alt * FT_TO_M)   # --alt is feet; geometry wants metres
     burst_len = int(round(BURST_US * args.fs / 1e6)) + 8
@@ -206,14 +316,61 @@ def main(argv=None):
     # top/htop): a fixed region redrawn in place each frame. This avoids both the
     # flicker of clear()/reprint and the header duplication that inline Live
     # causes when the table's height changes between frames.
-    with Live(build_table([]), refresh_per_second=4, screen=True) as live:
-        for t, iq in iq_chunks(args.freq, args.fs, args.gain, args.ppm):
-            process_chunk(t, iq, args.fs, rx_llh, store, burst_len,
-                          max_fix=max_fix, phase_search=args.phase_search,
-                          threshold=args.threshold)
-            if recorder:
-                recorder.flush()
-            live.update(build_table(build_rows(store, rx_llh, min_conf=min_conf)))
+    # Enrichment stores mirror the web path: cached make/model lookups and the
+    # ppm self-calibration, both surfaced in the header.
+    os.makedirs(args.data_dir, exist_ok=True)
+    type_store = None
+    if not args.no_lookup:
+        type_store = aircraft.TypeStore(
+            os.path.join(args.data_dir, "aircraft.sqlite"),
+            use_faa=args.faa_registry)
+    clockcal = ClockCal(os.path.join(args.data_dir, "clockcal.sqlite"),
+                        ppm=args.ppm)
+    records = Records(os.path.join(args.data_dir, "records.sqlite"))
+    health = server.Health()
+    rate = _BurstRate()
+    # Reconnect loop mirrors the web path: if the dongle can't be opened (not
+    # plugged in) or drops mid-stream, iq_chunks raises; instead of crashing we
+    # flag the error in the status header (red light) and retry, so plugging the
+    # SDR in recovers on its own.
+    with Live(build_display([]), refresh_per_second=4, screen=True) as live:
+        while True:
+            try:
+                for t, iq in iq_chunks(args.freq, args.fs, args.gain, args.ppm):
+                    health.mark_chunk()
+                    health.error = None           # data is flowing again
+                    added = process_chunk(t, iq, args.fs, rx_llh, store, burst_len,
+                                          max_fix=max_fix,
+                                          phase_search=args.phase_search,
+                                          threshold=args.threshold)
+                    if store.icaos():             # tracking anything -> light green
+                        health.mark_decode()
+                    if recorder:
+                        recorder.flush()
+                    now = time.time()
+                    rate.add(now, added)
+                    rows = build_rows(store, rx_llh, min_conf=min_conf,
+                                      type_store=type_store)
+                    clock = clock_estimate(store, clockcal, now)
+                    for r in rows:
+                        records.observe({"icao": r.icao, "flight": r.flight,
+                                         "make": r.make, "model": r.model,
+                                         "reg": r.reg, "speed_kt": r.speed_kt,
+                                         "alt": r.alt_ft, "vrate": r.vrate_fpm,
+                                         "range_km": r.range_km, "rssi": r.rssi,
+                                         "dop_span": r.dop_span}, now)
+                    live.update(build_display(
+                        rows, _live_status(rx_llh, health, rate, len(rows), now),
+                        clock, live.console.size.width,
+                        records=records.snapshot()))
+            except Exception as e:                # dongle missing / driver error
+                health.error = str(e)
+                live.update(build_display(
+                    build_rows(store, rx_llh, min_conf=min_conf,
+                               type_store=type_store),
+                    _live_status(rx_llh, health, rate, 0, time.time()),
+                    None, live.console.size.width))
+            time.sleep(2)                         # wait before reopening the dongle
 
 
 if __name__ == "__main__":

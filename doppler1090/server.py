@@ -8,6 +8,7 @@ from urllib.parse import parse_qs, urlparse
 import numpy as np
 from .geometry import geodetic_to_ecef, FT_TO_M
 from .terminal import confidence
+from .clockcal import clock_estimate
 
 
 class Health:
@@ -138,14 +139,8 @@ def build_snapshot(store, rx_llh, min_conf=0.0, at=None, server_time=None,
                                      a["range_km"] / 1.852, st)
         snap["coverage"] = coverage.snapshot()
     if clockcal is not None:
-        cur = getattr(store, "_clock", None)   # this frame's joint fit (drift, consts)
-        if at is None and cur is not None:
-            clockcal.observe(cur.get("consts"), st)
-        est = clockcal.estimate(st)            # accumulated median residual offset
-        if est is not None:
-            est["drift_ppm_min"] = cur["drift_ppm_min"] if cur else None
-            est["fresh_n"] = cur["n_aircraft"] if cur else 0
-        snap["clock"] = est
+        # observe only the live frame; scrubbed/replayed frames read-only
+        snap["clock"] = clock_estimate(store, clockcal, st, observe=(at is None))
     return snap
 
 
@@ -161,7 +156,7 @@ _CTYPES = {"html": "text/html", "js": "application/javascript",
 
 
 def _make_handler(store, rx_llh, lock, min_conf, history, type_store, health,
-                  records, coverage, clockcal):
+                  records, coverage, clockcal, replay=None):
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass  # silence per-request logging
@@ -177,6 +172,9 @@ def _make_handler(store, rx_llh, lock, min_conf, history, type_store, health,
 
         def _state(self, query):
             at = query.get("at", [None])[0]
+            # Replay has no live store; a bare request maps to the final frame.
+            if at is None and replay is not None:
+                at = replay["t_end"]
             # A past frame is reconstructed off-lock from the recorded file;
             # only the live frame touches the shared store.
             if at is not None and history is not None:
@@ -200,6 +198,15 @@ def _make_handler(store, rx_llh, lock, min_conf, history, type_store, health,
             if history is None:
                 data = {"start": None, "end": None, "buckets": [],
                         "recording": False}
+            elif replay is not None:
+                # Replay: anchor the strip to the session's own end (not
+                # wall-clock now) and tell the client to auto-play and loop.
+                data = history.timeline(now=replay["t_end"])
+                data["recording"] = True
+                data["replay"] = True
+                data["t_start"] = replay["t_start"]
+                data["t_end"] = replay["t_end"]
+                data["speed"] = replay["speed"]
             else:
                 data = history.timeline()
                 data["recording"] = True
@@ -229,18 +236,20 @@ def _make_handler(store, rx_llh, lock, min_conf, history, type_store, health,
 
 def make_server(store, rx_llh, lock, min_conf, port=0, history=None,
                 type_store=None, health=None, records=None, coverage=None,
-                clockcal=None):
+                clockcal=None, replay=None):
     return ThreadingHTTPServer(("127.0.0.1", port),
                                _make_handler(store, rx_llh, lock, min_conf,
                                              history, type_store, health,
-                                             records, coverage, clockcal))
+                                             records, coverage, clockcal,
+                                             replay))
 
 
 def serve(store, rx_llh, lock, min_conf, port, open_browser=False, history=None,
-          type_store=None, health=None, records=None, coverage=None, clockcal=None):
+          type_store=None, health=None, records=None, coverage=None,
+          clockcal=None, replay=None):
     httpd = make_server(store, rx_llh, lock, min_conf, port, history=history,
                         type_store=type_store, health=health, records=records,
-                        coverage=coverage, clockcal=clockcal)
+                        coverage=coverage, clockcal=clockcal, replay=replay)
     actual = httpd.server_address[1]
     if open_browser:
         import webbrowser

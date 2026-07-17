@@ -83,6 +83,7 @@ let viewTime = 0;             // epoch of the current past frame
 let playing = false, speed = 1;
 const SPEEDS = [1, 2, 5, 10, 20];   // playback multipliers cycled by the button
 let tl = null;                // { start, end, buckets, recording }
+let isReplay = false;         // replay: auto-play + loop, no true live frame
 let inflight = false;         // guards overlapping /api/state fetches
 
 const GHOST_TTL_MS = 5 * 60 * 1000;
@@ -971,7 +972,7 @@ function updateHud() {
   // the sole indicator (no duplicated "LIVE").
   const badge = document.getElementById('h-mode');
   badge.style.display = mode === 'live' ? 'none' : '';
-  badge.textContent = 'PAST';
+  badge.textContent = isReplay ? 'REPLAY' : 'PAST';
   badge.className = 'badge past';
 }
 
@@ -1022,10 +1023,30 @@ scrub.addEventListener('pointerup', e => { scrubbing = false; });
 
 // ---- time-travel machine -------------------------------------------------
 function goLive() {
+  if (isReplay) {              // no live frame in replay: resume the looping sweep
+    mode = 'past'; playing = true;
+    document.getElementById('console').classList.add('past');
+    updateTransport(); positionPlayhead();
+    return;
+  }
   mode = 'live'; playing = false; speed = 1;   // returning to live resets speed
   document.getElementById('console').classList.remove('past');
   updateTransport(); positionPlayhead();
   fetchState(null);
+}
+// Replay: auto-play the recorded session from the start and loop forever. There
+// is no true "live" frame, so the playhead just sweeps [t_start, t_end].
+function startReplay() {
+  isReplay = true;
+  document.getElementById('live').style.display = 'none';  // no "live" in replay
+  const s = tl.speed || 1;
+  speed = SPEEDS.includes(s) ? s
+        : SPEEDS.reduce((a, b) => Math.abs(b - s) < Math.abs(a - s) ? b : a);
+  mode = 'past';
+  viewTime = tl.t_start ?? tl.start;
+  playing = true;
+  document.getElementById('console').classList.add('past');
+  updateTransport(); positionPlayhead(); fetchState(viewTime);
 }
 function seek(t) {
   mode = 'past';
@@ -1054,6 +1075,7 @@ async function pollTimeline() {
     tl = await r.json();
     document.getElementById('transport').classList.toggle('norecord', !tl.recording);
     drawTimeline();
+    if (tl.replay && !isReplay) startReplay();
   } catch (e) { /* keep last strip */ }
 }
 
@@ -1087,8 +1109,11 @@ document.getElementById('list').addEventListener('pointerdown', e => {
 // playback tick: advance the virtual clock, snap back to live at the end
 setInterval(() => {
   if (!playing || mode !== 'past' || !tl) return;
-  const next = viewTime + speed * 0.25;
-  if (next >= tl.end) { playing = false; goLive(); return; }
+  let next = viewTime + speed * 0.25;
+  if (next >= tl.end) {
+    if (!isReplay) { playing = false; goLive(); return; }
+    next = tl.t_start ?? tl.start;   // replay: loop back to the start
+  }
   viewTime = next;
   updateTransport(); positionPlayhead(); fetchState(viewTime);
 }, 250);
