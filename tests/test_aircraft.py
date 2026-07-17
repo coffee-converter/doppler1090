@@ -152,3 +152,46 @@ def test_resolve_type_photo_caches_miss(tmp_path, monkeypatch):
     monkeypatch.setattr(store, "_wiki_photo", lambda q: None)
     info, source = store._resolve_type_photo("NOPE ZZZ")
     assert info is None and source == "none"
+
+
+def test_retry_after_parses_delta_and_falls_back():
+    from doppler1090.aircraft import _retry_after
+
+    class E:
+        def __init__(self, h):
+            self.headers = h
+
+    assert _retry_after(E({"Retry-After": "30"}), 60) == 30
+    assert _retry_after(E(None), 60) == 60          # no headers -> default
+    assert _retry_after(E({}), 60) == 60            # header absent -> default
+    assert _retry_after(E({"Retry-After": "Wed, 21 Oct 2099 GMT"}), 60) == 60  # date form
+    assert _retry_after(E({"Retry-After": "99999"}), 60) == 3600   # clamped
+
+
+def test_get_json_parks_source_on_429_then_short_circuits(tmp_path, monkeypatch):
+    import time
+    store = TypeStore(str(tmp_path / "t.db"))
+
+    def boom(req, timeout=8):
+        raise urllib.error.HTTPError(req.full_url, 429, "slow down",
+                                     {"Retry-After": "45"}, None)
+
+    monkeypatch.setattr(aircraft.urllib.request, "urlopen", boom)
+    with pytest.raises(urllib.error.HTTPError):
+        store._get_json("https://api.adsbdb.com/x", "adsbdb")
+    assert store._source_until["adsbdb"] > time.time() + 30      # parked ~45s
+
+    # while parked, another call raises WITHOUT touching the network
+    monkeypatch.setattr(aircraft.urllib.request, "urlopen",
+                        lambda *a, **k: pytest.fail("hit network while parked"))
+    with pytest.raises(RuntimeError):
+        store._get_json("https://api.adsbdb.com/x", "adsbdb")
+
+
+def test_enqueue_skips_item_during_backoff(tmp_path):
+    import time
+    store = TypeStore(str(tmp_path / "t.db"))
+    item = ("type", "ABC123")
+    store._retry_at[item] = time.time() + 100        # backed off after a failure
+    store._enqueue(item)
+    assert item not in store._queued and store._q.qsize() == 0

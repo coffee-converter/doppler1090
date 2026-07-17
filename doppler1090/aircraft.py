@@ -10,9 +10,11 @@ later runs, and shared across sessions and browser tabs. Sources, in order:
      download), keyed directly by the Mode S hex.
 
 Lookups run on a background thread so they never block snapshot building: a
-miss returns None now and fills in on a later snapshot once resolved. Transient
-failures (timeouts, rate limits) are NOT cached, so they retry; only genuine
-"unknown aircraft" answers are cached as misses.
+miss returns None now and fills in on a later snapshot once resolved. Genuine
+"unknown aircraft" answers are cached as misses; transient failures (timeouts,
+rate limits) are retried with exponential backoff, and a 429/503 parks that
+source for its Retry-After window - so a busy dashboard can't hammer the free
+public APIs.
 """
 
 import csv
@@ -66,6 +68,18 @@ def _strip_html(s):
     return html.unescape(_TAG.sub("", s or "")).strip()
 
 
+def _retry_after(exc, default):
+    """Seconds to wait from a 429/503 ``Retry-After`` header. Handles the
+    delta-seconds form; the rarer HTTP-date form falls back to ``default``.
+    Clamped to [1, 3600]."""
+    val = exc.headers.get("Retry-After") if exc.headers else None
+    try:
+        secs = int(val)
+    except (TypeError, ValueError):
+        secs = default
+    return max(1, min(secs, 3600))
+
+
 class TypeStore:
     def __init__(self, path, use_faa=False):
         self.use_faa = use_faa
@@ -107,6 +121,9 @@ class TypeStore:
         self._q = queue.Queue()
         self._queued = set()            # in-flight items (avoid duplicates)
         self._adsb_missed = set()       # tried adsbdb already, awaiting FAA
+        self._source_until = {}         # source -> epoch it's parked until (429/503)
+        self._retry_at = {}             # (kind,key) -> earliest retry epoch (backoff)
+        self._retry_n = {}              # (kind,key) -> consecutive transient count
         self._faa_ready = self._count("faa") > 0
         threading.Thread(target=self._worker, daemon=True).start()
         if self.use_faa and not self._faa_ready:
@@ -148,9 +165,13 @@ class TypeStore:
         return None
 
     def _enqueue(self, item):
-        if item not in self._queued:
-            self._queued.add(item)
-            self._q.put(item)
+        if item in self._queued:
+            return
+        ra = self._retry_at.get(item)
+        if ra is not None and time.time() < ra:
+            return                      # negatively cached after a transient failure
+        self._queued.add(item)
+        self._q.put(item)
 
     # ---- background resolution -------------------------------------------
     def _worker(self):
@@ -174,6 +195,12 @@ class TypeStore:
                 else:
                     self._store_type_photo(key, info, source)
                     self._type_photo_mem[key] = info
+                self._retry_at.pop((kind, key), None)
+                self._retry_n.pop((kind, key), None)
+            else:                        # transient: exponential backoff (5s..10min)
+                n = self._retry_n.get((kind, key), 0) + 1
+                self._retry_n[(kind, key)] = n
+                self._retry_at[(kind, key)] = time.time() + min(600, 5 * 2 ** (n - 1))
             self._queued.discard((kind, key))
             time.sleep(0.3)              # be polite to the API
 
@@ -194,16 +221,28 @@ class TypeStore:
                 return r, "faa"
         return None, "none"
 
-    def _adsbdb(self, icao):
-        req = urllib.request.Request(ADSBDB.format(icao.lower()),
-                                     headers={"User-Agent": UA})
+    def _get_json(self, url, source):
+        """GET JSON with the shared UA. Returns the parsed body, or None on 404
+        (a genuine miss). On 429/503 it parks ``source`` for its Retry-After
+        window; any non-404 error - including a parked source - raises so the
+        caller retries later with backoff."""
+        if time.time() < self._source_until.get(source, 0):
+            raise RuntimeError(f"{source} backing off (rate-limited)")
+        req = urllib.request.Request(url, headers={"User-Agent": UA})
         try:
             with urllib.request.urlopen(req, timeout=8) as resp:
-                j = json.load(resp)
+                return json.load(resp)
         except urllib.error.HTTPError as e:
             if e.code == 404:
-                return None              # genuinely unknown
-            raise                        # 429/5xx etc -> transient
+                return None
+            if e.code in (429, 503):
+                self._source_until[source] = time.time() + _retry_after(e, 60)
+            raise
+
+    def _adsbdb(self, icao):
+        j = self._get_json(ADSBDB.format(icao.lower()), "adsbdb")
+        if j is None:
+            return None                  # genuinely unknown
         resp = (j or {}).get("response")
         if isinstance(resp, dict) and resp.get("aircraft"):
             ac = resp["aircraft"]
@@ -240,15 +279,9 @@ class TypeStore:
         return None, "none"
 
     def _ps_photo(self, reg):
-        req = urllib.request.Request(PLANESPOTTERS.format(reg),
-                                     headers={"User-Agent": UA})
-        try:
-            with urllib.request.urlopen(req, timeout=8) as resp:
-                j = json.load(resp)
-        except urllib.error.HTTPError as e:
-            if e.code == 404:
-                return None
-            raise
+        j = self._get_json(PLANESPOTTERS.format(reg), "planespotters")
+        if j is None:
+            return None
         photos = (j or {}).get("photos") or []
         if photos:
             p = photos[0]
@@ -258,15 +291,9 @@ class TypeStore:
         return None
 
     def _ad_photo(self, reg):
-        req = urllib.request.Request(AIRPORTDATA.format(reg),
-                                     headers={"User-Agent": UA})
-        try:
-            with urllib.request.urlopen(req, timeout=8) as resp:
-                j = json.load(resp)
-        except urllib.error.HTTPError as e:
-            if e.code == 404:                # airport-data returns 404 for misses
-                return None
-            raise
+        j = self._get_json(AIRPORTDATA.format(reg), "airport-data")
+        if j is None:                        # airport-data returns 404 for misses
+            return None
         data = (j or {}).get("data") or []
         if data:
             d = data[0]
@@ -298,11 +325,10 @@ class TypeStore:
                   "gsrnamespace": 6, "gsrsearch": query + " aircraft", "gsrlimit": 8,
                   "prop": "imageinfo", "iiprop": "url|extmetadata|mime",
                   "iiurlwidth": 640}
-        req = urllib.request.Request(
-            WIKI_API + "?" + urllib.parse.urlencode(params),
-            headers={"User-Agent": UA})
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            j = json.load(resp)
+        j = self._get_json(WIKI_API + "?" + urllib.parse.urlencode(params),
+                           "wikimedia")
+        if j is None:
+            return None
         pages = ((j or {}).get("query") or {}).get("pages") or {}
         for p in sorted(pages.values(), key=lambda p: p.get("index", 0)):
             ii = (p.get("imageinfo") or [{}])[0]
