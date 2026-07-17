@@ -91,3 +91,40 @@ def test_min_confidence_defaults_to_zero_show_all():
     assert args.min_confidence == 0.0          # default shows all decoded aircraft
     args2 = p.parse_args(["--lat", "1.0", "--lon", "2.0", "--min-confidence", "0.3"])
     assert args2.min_confidence == 0.3         # still tunable to filter
+
+
+def test_parser_replay_makes_latlon_optional():
+    p = build_parser()
+    args = p.parse_args(["--replay", "sess.sqlite"])
+    assert args.lat is None and args.lon is None
+    assert args.replay == "sess.sqlite"
+    assert args.replay_speed == 1.0
+
+
+def test_replay_missing_file_errors():
+    import pytest
+    from doppler1090.cli import main
+    with pytest.raises(SystemExit):
+        main(["--replay", "/no/such/file.sqlite"])
+
+
+def test_replay_web_wires_serve_with_rx_and_bounds_from_file(tmp_path, monkeypatch):
+    # --replay --web should read rx from the file and hand serve() a replay dict,
+    # never touching --lat/--lon. Fake serve() so nothing blocks or opens a tab.
+    import os
+    from doppler1090 import server
+    from doppler1090.cli import main
+    sample = os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
+                                          "examples", "sample-session.sqlite"))
+    captured = {}
+
+    def fake_serve(store, rx_llh, lock, min_conf, port, **kw):
+        captured["rx_llh"] = rx_llh
+        captured["replay"] = kw.get("replay")
+
+    monkeypatch.setattr(server, "serve", fake_serve)
+    main(["--replay", sample, "--web", "--no-lookup", "--data-dir", str(tmp_path)])
+    assert abs(captured["rx_llh"][0] - 42.1475) < 0.01     # shifted rx, from file
+    rp = captured["replay"]
+    assert rp["t_start"] < rp["t_end"]
+    assert rp["speed"] == 1.0

@@ -103,3 +103,40 @@ def test_static_strips_query_string():
             assert r.status == 200
     finally:
         httpd.shutdown()
+
+
+def test_replay_server_timeline_and_state():
+    """Replay serves the recorded file: timeline carries replay bounds, and a
+    reconstructed mid-session frame has aircraft, with rx read from the file."""
+    import os
+    from doppler1090.history import History, read_session_meta
+    path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
+                                        "examples", "sample-session.sqlite"))
+    rx_llh, ppm = read_session_meta(path)
+    history = History(path, max_age=60)
+    t0, t1 = history.bounds()
+    store = TrackStore(max_age=60)
+    replay = {"t_start": t0, "t_end": t1, "speed": 1.0}
+    httpd = make_server(store, rx_llh, store.lock, 0.0, port=0,
+                        history=history, replay=replay)
+    th = threading.Thread(target=httpd.serve_forever, daemon=True)
+    th.start()
+    try:
+        port = httpd.server_address[1]
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/timeline") as r:
+            tl = json.load(r)
+        assert tl["replay"] is True
+        assert tl["t_start"] == t0 and tl["t_end"] == t1
+        # bare /api/state maps to a concrete (final) frame, not the empty store
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/state") as r:
+            snap = json.load(r)
+        assert snap["at"] is not None
+        assert abs(snap["receiver"]["lat"] - rx_llh[0]) < 1e-9   # rx from file
+        # a mid-session frame reconstructs live-looking traffic
+        mid = (t0 + t1) / 2
+        with urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/api/state?at={mid}") as r:
+            snap = json.load(r)
+        assert len(snap["aircraft"]) > 0
+    finally:
+        httpd.shutdown()
