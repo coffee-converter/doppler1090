@@ -1,6 +1,7 @@
 import numpy as np
 from doppler1090.track import TrackStore
-from doppler1090.terminal import build_rows, build_table, confidence
+from doppler1090.terminal import (build_rows, build_table, build_header,
+                                  confidence)
 
 
 def _seed(store, icao, n, trk):
@@ -53,10 +54,71 @@ def test_min_conf_hides_low_confidence_aircraft():
     assert set(all_icaos) == {"good", "flat"}
 
 
-def test_build_table_columns_and_rows():
+def test_build_table_full_width_has_all_columns():
     store = TrackStore()
     _seed_tracking(store, "good", span=600.0, noise=10.0)
     rows = build_rows(store, (0.0, 0.0, 0.0))
-    table = build_table(rows)
+    table = build_table(rows)                    # width=None -> full
     assert table.row_count == len(rows)
-    assert len(table.columns) == 14  # ICAO,Flight,Alt,Spd,Trk,V/S,Range,2xDop,Scale,Corr,Conf,Quality,Bursts
+    assert len(table.columns) == 15
+    assert [c.header for c in table.columns][:3] == ["ICAO", "Flight", "Aircraft"]
+
+
+def test_build_table_drops_columns_as_width_narrows():
+    store = TrackStore()
+    _seed_tracking(store, "good", span=600.0, noise=10.0)
+    rows = build_rows(store, (0.0, 0.0, 0.0))
+    full = len(build_table(rows, width=200).columns)
+    compact = len(build_table(rows, width=120).columns)
+    narrow = len(build_table(rows, width=80).columns)
+    assert full == 15 and compact == 11 and narrow == 8
+    # the fit diagnostics are the first to go; heading survives to narrow
+    narrow_headers = [c.header for c in build_table(rows, width=80).columns]
+    assert "Trk°" in narrow_headers
+    assert "Scale" not in narrow_headers and "Conf" not in narrow_headers
+    assert "Dop m(p) Hz" in narrow_headers       # merged Doppler column stays
+
+
+class _FakeTypeStore:
+    def __init__(self, table):
+        self._t = table
+
+    def get(self, icao):
+        return self._t.get(icao)
+
+
+def test_build_rows_enriches_make_model_reg_and_signal():
+    store = TrackStore()
+    # inject with a nonzero burst amplitude so rssi is computed
+    for i in range(10):
+        store._inject("aa", float(i), 5000.0, 100.0 - 10 * i, 0.0,
+                      0.01 + 0.0001 * i, 270.0, signal=0.5)
+    ts = _FakeTypeStore({"aa": {"make": "Embraer", "model": "EMB-175 LR",
+                                "reg": "N163SY"}})
+    r = build_rows(store, (0.0, 0.0, 0.0), type_store=ts)[0]
+    assert r.make == "Embraer" and r.model == "EMB-175 LR" and r.reg == "N163SY"
+    assert r.rssi is not None                    # signal present -> dBFS computed
+
+
+def test_build_rows_without_type_store_leaves_identity_blank():
+    store = TrackStore()
+    _seed_tracking(store, "aa", span=600.0, noise=10.0)
+    r = build_rows(store, (0.0, 0.0, 0.0))[0]    # no type_store
+    assert r.make is None and r.model is None and r.reg is None
+    assert r.rssi is None                          # seeded with signal=0
+
+
+def test_build_header_shows_status_and_ppm():
+    import io
+    from rich.console import Console
+    status = {"rx": (42.19, -88.19), "uptime_s": 1531, "n_aircraft": 6,
+              "burst_rate": 141, "sdr_state": "receiving"}
+    clock = {"offset_ppm": -1.8, "ppm": 0, "n_aircraft": 4, "window_h": 24,
+             "drift_ppm_min": 0.3, "fresh_n": 4}
+    buf = io.StringIO()
+    Console(file=buf, width=200).print(build_header(status, clock))
+    out = buf.getvalue()
+    assert "6 ac" in out and "141 brst/min" in out and "receiving" in out
+    assert "-1.8" in out                 # absolute offset ppm
+    assert "--ppm -2" in out             # suggestion = round(-1.8)
+    assert "ADS-B" in out                # generalized title

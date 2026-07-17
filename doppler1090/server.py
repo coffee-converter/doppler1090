@@ -8,6 +8,7 @@ from urllib.parse import parse_qs, urlparse
 import numpy as np
 from .geometry import geodetic_to_ecef, FT_TO_M
 from .terminal import confidence
+from .clockcal import clock_estimate
 
 
 class Health:
@@ -138,14 +139,8 @@ def build_snapshot(store, rx_llh, min_conf=0.0, at=None, server_time=None,
                                      a["range_km"] / 1.852, st)
         snap["coverage"] = coverage.snapshot()
     if clockcal is not None:
-        cur = getattr(store, "_clock", None)   # this frame's joint fit (drift, consts)
-        if at is None and cur is not None:
-            clockcal.observe(cur.get("consts"), st)
-        est = clockcal.estimate(st)            # accumulated median residual offset
-        if est is not None:
-            est["drift_ppm_min"] = cur["drift_ppm_min"] if cur else None
-            est["fresh_n"] = cur["n_aircraft"] if cur else 0
-        snap["clock"] = est
+        # observe only the live frame; scrubbed/replayed frames read-only
+        snap["clock"] = clock_estimate(store, clockcal, st, observe=(at is None))
     return snap
 
 

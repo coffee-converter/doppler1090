@@ -16,8 +16,8 @@ from .history import Recorder, History, read_session_meta
 from . import aircraft
 from .records import Records
 from .coverage import Coverage
-from .clockcal import ClockCal
-from .terminal import build_rows, build_table
+from .clockcal import ClockCal, clock_estimate
+from .terminal import build_rows, build_display
 from . import server
 
 BURST_US = 120.0
@@ -96,6 +96,27 @@ def process_chunk(t, iq, fs, rx_llh, store, burst_len, max_fix=1, phase_search=1
         store.add_burst(icao, t, f_off, rx_llh, signal=sig)
         added += store.burst_count(icao) - before
     return added
+
+
+class _BurstRate:
+    """Rolling bursts-per-minute over a short window, for the status header."""
+
+    def __init__(self, window=60.0):
+        self.window = window
+        self._events = []
+
+    def add(self, t, count):
+        if count:
+            self._events.append((t, count))
+        cutoff = t - self.window
+        self._events = [(tt, c) for tt, c in self._events if tt >= cutoff]
+
+    def per_min(self, now):
+        if not self._events:
+            return 0.0
+        total = sum(c for _, c in self._events)
+        elapsed = max(now - self._events[0][0], 5.0)   # avoid early spikes
+        return total * 60.0 / elapsed
 
 
 def build_parser():
@@ -179,14 +200,19 @@ def _run_replay(args):
 def _replay_terminal(history, rx_llh, min_conf, t_start, t_end, speed):
     """Terminal replay: a virtual clock sweeps the session at ``speed`` and the
     table is re-rendered from reconstructed state, looping at the end."""
-    with Live(build_table([]), refresh_per_second=4, screen=True) as live:
+    with Live(build_display([]), refresh_per_second=4, screen=True) as live:
         while True:
             wall0 = time.monotonic()
             at = t_start
             while at < t_end:
                 store = history.reconstruct(at)
-                live.update(build_table(
-                    build_rows(store, rx_llh, min_conf=min_conf)))
+                rows = build_rows(store, rx_llh, min_conf=min_conf)
+                status = {"rx": (rx_llh[0], rx_llh[1]),
+                          "uptime_s": at - t_start,
+                          "n_aircraft": len(rows),
+                          "sdr_state": "replay"}
+                live.update(build_display(rows, status, None,
+                                          live.console.size.width))
                 time.sleep(0.25)
                 at = t_start + (time.monotonic() - wall0) * speed
 
@@ -280,14 +306,40 @@ def main(argv=None):
     # top/htop): a fixed region redrawn in place each frame. This avoids both the
     # flicker of clear()/reprint and the header duplication that inline Live
     # causes when the table's height changes between frames.
-    with Live(build_table([]), refresh_per_second=4, screen=True) as live:
+    # Enrichment stores mirror the web path: cached make/model lookups and the
+    # ppm self-calibration, both surfaced in the header.
+    os.makedirs(args.data_dir, exist_ok=True)
+    type_store = None
+    if not args.no_lookup:
+        type_store = aircraft.TypeStore(
+            os.path.join(args.data_dir, "aircraft.sqlite"),
+            use_faa=args.faa_registry)
+    clockcal = ClockCal(os.path.join(args.data_dir, "clockcal.sqlite"),
+                        ppm=args.ppm)
+    health = server.Health()
+    rate = _BurstRate()
+    with Live(build_display([]), refresh_per_second=4, screen=True) as live:
         for t, iq in iq_chunks(args.freq, args.fs, args.gain, args.ppm):
-            process_chunk(t, iq, args.fs, rx_llh, store, burst_len,
-                          max_fix=max_fix, phase_search=args.phase_search,
-                          threshold=args.threshold)
+            health.mark_chunk()
+            added = process_chunk(t, iq, args.fs, rx_llh, store, burst_len,
+                                  max_fix=max_fix, phase_search=args.phase_search,
+                                  threshold=args.threshold)
+            if store.icaos():                 # tracking anything -> SDR light green
+                health.mark_decode()
             if recorder:
                 recorder.flush()
-            live.update(build_table(build_rows(store, rx_llh, min_conf=min_conf)))
+            now = time.time()
+            rate.add(now, added)
+            rows = build_rows(store, rx_llh, min_conf=min_conf,
+                              type_store=type_store)
+            clock = clock_estimate(store, clockcal, now)
+            status = {"rx": (rx_llh[0], rx_llh[1]),
+                      "uptime_s": now - health.started,
+                      "n_aircraft": len(rows),
+                      "burst_rate": rate.per_min(now),
+                      "sdr_state": health.snapshot(now)["state"]}
+            live.update(build_display(rows, status, clock,
+                                      live.console.size.width))
 
 
 if __name__ == "__main__":

@@ -1,7 +1,8 @@
 import numpy as np
 from dataclasses import dataclass
-from rich.console import Console
+from rich.console import Console, Group
 from rich.table import Table
+from rich.text import Text
 from .geometry import geodetic_to_ecef, FT_TO_M
 
 _console = Console()
@@ -26,6 +27,9 @@ def confidence(fit):
 class Row:
     icao: str
     flight: str
+    make: str | None
+    model: str | None
+    reg: str | None
     alt_ft: float | None
     speed_kt: float | None
     track_deg: float | None
@@ -33,6 +37,7 @@ class Row:
     range_km: float
     dop_pred: float
     dop_meas: float
+    rssi: float | None
     scale: float
     corr: float
     conf: float
@@ -40,10 +45,11 @@ class Row:
     bursts: int
 
 
-def build_rows(store, rx_llh, min_conf=0.0):
+def build_rows(store, rx_llh, min_conf=0.0, type_store=None):
     """Build display rows in stable first-seen order (oldest aircraft first, so
     rows don't reshuffle). Aircraft whose fit confidence is below min_conf are
-    omitted."""
+    omitted. ``type_store`` (optional) supplies cached make/model/registration -
+    a miss just leaves those blank and fills in on a later frame."""
     rx = geodetic_to_ecef(*rx_llh)
     fits = store.joint_fit()  # shared clock-drift removed across all aircraft
     rows = []
@@ -60,9 +66,16 @@ def build_rows(store, rx_llh, min_conf=0.0):
             ac = geodetic_to_ecef(s["lat"], s["lon"], s["alt"] * FT_TO_M)
             rng_km = float(np.linalg.norm(ac - rx) / 1000.0)
         samples = store._samples[icao]
+        info = type_store.get(icao) if type_store is not None else None
+        # mean burst amplitude over the window, as dBFS (matches the web card)
+        sigs = [x.signal for x in samples if x.signal > 0]
+        rssi = round(float(20 * np.log10(np.mean(sigs))), 1) if sigs else None
         rows.append(Row(
             icao=icao,
             flight=s.get("flight", ""),
+            make=(info or {}).get("make"),
+            model=(info or {}).get("model"),
+            reg=(info or {}).get("reg"),
             alt_ft=s.get("alt"),
             speed_kt=s.get("speed_kt"),
             track_deg=s.get("track"),
@@ -70,6 +83,7 @@ def build_rows(store, rx_llh, min_conf=0.0):
             range_km=rng_km,
             dop_pred=float(samples[-1].doppler_pred),
             dop_meas=float(fit.measured_doppler[-1]),
+            rssi=rssi,
             scale=fit.scale,
             corr=fit.correlation,
             conf=conf,
@@ -79,29 +93,116 @@ def build_rows(store, rx_llh, min_conf=0.0):
     return rows
 
 
-def build_table(rows):
-    """Build the rich Table for the given rows. Pure (no I/O), so it can be
-    handed to rich.Live for flicker-free in-place updates."""
-    table = Table(title="doppler1090 - measured vs predicted Doppler")
-    for col in ("ICAO", "Flight", "Alt ft", "Spd kt", "Trk°", "V/S fpm",
-                "Range km", "Dop pred Hz", "Dop meas Hz",
-                "Scale", "Corr", "Conf", "Quality", "Bursts"):
-        table.add_column(col, justify="right")
+# Column width tiers: which columns survive as the terminal narrows. The
+# Doppler-fit diagnostics (scale/corr/conf/quality) drop first; standard ADS-B
+# fields (heading, vertical speed) and the core Doppler comparison stay longest.
+NARROW, COMPACT, FULL = 0, 1, 2
+
+
+def _tier(width):
+    if width is None or width >= 150:
+        return FULL
+    return COMPACT if width >= 100 else NARROW
+
+
+def _aircraft_cell(r):
+    parts = [p for p in (r.model or r.make, r.reg) if p]
+    return " · ".join(parts) if parts else "-"
+
+
+def _dop_cell(r):
+    # measured (predicted) - the project's headline comparison, side by side
+    return f"{r.dop_meas:+.0f} ({r.dop_pred:+.0f})"
+
+
+# (header, min_tier, value_fn) - a column shows when the current tier >= min_tier.
+# Order reads left to right as identity -> kinematics -> receiver-relative ->
+# the Doppler measurement -> fit diagnostics. Tier is independent of position,
+# so a compact-only column just drops out in place when the terminal narrows.
+_COLUMNS = [
+    ("ICAO",        NARROW,  lambda r: r.icao),
+    ("Flight",      NARROW,  lambda r: r.flight or "-"),
+    ("Aircraft",    NARROW,  _aircraft_cell),
+    ("Alt ft",      NARROW,  lambda r: "-" if r.alt_ft is None else f"{r.alt_ft:.0f}"),
+    ("V/S fpm",     COMPACT, lambda r: "-" if r.vrate_fpm is None else f"{r.vrate_fpm:+.0f}"),
+    ("Spd kt",      NARROW,  lambda r: "-" if r.speed_kt is None else f"{r.speed_kt:.0f}"),
+    ("Trk°",        NARROW,  lambda r: "-" if r.track_deg is None else f"{r.track_deg:.0f}"),
+    ("Range km",    NARROW,  lambda r: f"{r.range_km:.1f}"),
+    ("Sig dB",      COMPACT, lambda r: "-" if r.rssi is None else f"{r.rssi:.0f}"),
+    ("Dop m(p) Hz", NARROW,  _dop_cell),
+    ("Bursts",      COMPACT, lambda r: str(r.bursts)),
+    ("Scale",       FULL,    lambda r: f"{r.scale:.2f}"),
+    ("Corr",        FULL,    lambda r: f"{r.corr:.2f}"),
+    ("Conf",        FULL,    lambda r: f"{r.conf:.2f}"),
+    ("Quality",     FULL,    lambda r: f"{r.quality:.2f}"),
+]
+
+
+def build_table(rows, width=None):
+    """Build the rich Table, dropping lower-priority columns to fit ``width``
+    (None = full). Pure (no I/O), so it can be handed to rich.Live for
+    flicker-free in-place updates."""
+    tier = _tier(width)
+    cols = [c for c in _COLUMNS if c[1] <= tier]
+    table = Table()
+    for header, _, _ in cols:
+        table.add_column(header, justify="right")
     for r in rows:
-        table.add_row(
-            r.icao, r.flight,
-            "-" if r.alt_ft is None else f"{r.alt_ft:.0f}",
-            "-" if r.speed_kt is None else f"{r.speed_kt:.0f}",
-            "-" if r.track_deg is None else f"{r.track_deg:.0f}",
-            "-" if r.vrate_fpm is None else f"{r.vrate_fpm:+.0f}",
-            f"{r.range_km:.1f}",
-            f"{r.dop_pred:+.0f}", f"{r.dop_meas:+.0f}",
-            f"{r.scale:.2f}", f"{r.corr:.2f}", f"{r.conf:.2f}",
-            f"{r.quality:.2f}", str(r.bursts),
-        )
+        table.add_row(*[fn(r) for _, _, fn in cols])
     return table
 
 
-def render(rows):
+_SDR_STYLE = {"receiving": "bold green", "idle": "bold yellow",
+              "down": "bold red", "replay": "bold cyan"}
+
+
+def _fmt_dur(s):
+    s = int(s)
+    h, s = divmod(s, 3600)
+    m, s = divmod(s, 60)
+    return f"{h}h{m:02d}m" if h else f"{m}m{s:02d}s"
+
+
+def build_header(status=None, clock=None):
+    """A status line (receiver, uptime, aircraft, decode rate, SDR light) plus,
+    when available, the ppm self-calibration readout - the same figures the web
+    dashboard shows, so the terminal is where you'd read and act on --ppm."""
+    st = status or {}
+    title = Text("doppler1090", style="bold")
+    title.append(" — live ADS-B & measured-vs-predicted Doppler", style="dim")
+    line = Text()
+    rx = st.get("rx")
+    if rx:
+        line.append(f"rx {rx[0]:.4f},{rx[1]:.4f}  ", style="cyan")
+    line.append(f"up {_fmt_dur(st.get('uptime_s', 0))}  ")
+    line.append(f"{st.get('n_aircraft', 0)} ac  ")
+    line.append(f"{st.get('burst_rate', 0):.0f} brst/min  ")
+    state = st.get("sdr_state", "down")
+    line.append("● ", style=_SDR_STYLE.get(state, "dim"))
+    line.append(state)
+    parts = [title, line]
+    if clock:
+        off = clock["offset_ppm"]
+        cur = clock.get("ppm") or 0
+        c = Text("ppm  ", style="bold")
+        c.append(f"{off:+.1f}", style="magenta")
+        c.append(f"  suggest --ppm {round(off)}  "
+                 f"(now --ppm {cur}, residual {off - cur:+.1f})")
+        drift = clock.get("drift_ppm_min")
+        if drift is not None:
+            c.append(f"  drift {drift:+.2f} ppm/min")
+        if not clock.get("fresh_n"):        # dim while not fitting right now
+            c.stylize("dim")
+        parts.append(c)
+    return Group(*parts)
+
+
+def build_display(rows, status=None, clock=None, width=None):
+    """Full terminal frame: the status/ppm header above the aircraft table,
+    with the table's columns fitted to ``width``."""
+    return Group(build_header(status, clock), build_table(rows, width))
+
+
+def render(rows, status=None, clock=None):
     """One-shot print (used outside a Live context)."""
-    _console.print(build_table(rows))
+    _console.print(build_display(rows, status, clock, _console.size.width))

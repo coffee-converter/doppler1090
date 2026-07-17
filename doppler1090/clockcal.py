@@ -75,3 +75,22 @@ class ClockCal:
                 "n_aircraft": len(rows),
                 "window_h": round(self.window_s / 3600.0),
                 "ppm": self.ppm}                          # current --ppm in force
+
+
+def clock_estimate(store, clockcal, now, observe=True):
+    """This frame's clock-calibration readout, shared by the web dashboard and
+    the terminal header.
+
+    Optionally folds the current joint fit into the accumulated calibration,
+    then returns the accumulated absolute ppm offset annotated with the current
+    frame's drift and fresh-aircraft count. ``None`` until enough data. Keeping
+    this in one place means the ppm figure is computed identically in both UIs.
+    """
+    cur = getattr(store, "_clock", None)   # set by store.joint_fit()
+    if observe and cur is not None:
+        clockcal.observe(cur.get("consts"), now)
+    est = clockcal.estimate(now)
+    if est is not None:
+        est["drift_ppm_min"] = cur["drift_ppm_min"] if cur else None
+        est["fresh_n"] = cur["n_aircraft"] if cur else 0
+    return est

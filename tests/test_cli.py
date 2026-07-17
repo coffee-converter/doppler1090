@@ -128,3 +128,13 @@ def test_replay_web_wires_serve_with_rx_and_bounds_from_file(tmp_path, monkeypat
     rp = captured["replay"]
     assert rp["t_start"] < rp["t_end"]
     assert rp["speed"] == 1.0
+
+
+def test_burst_rate_per_min_and_window():
+    from doppler1090.cli import _BurstRate
+    r = _BurstRate(window=60.0)
+    r.add(0.0, 10)
+    r.add(30.0, 20)                 # 30 bursts over 30 s -> ~60/min
+    assert 55 < r.per_min(30.0) < 65
+    r.add(100.0, 5)                 # events older than the window fall off
+    assert r.per_min(100.0) == 60.0
