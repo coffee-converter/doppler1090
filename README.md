@@ -39,7 +39,7 @@ A straight pipeline from raw IQ to a measured-vs-predicted comparison:
 
 | Stage | Module | What it does |
 |-------|--------|--------------|
-| Capture | `capture.py` | Streams 2.4 Msps IQ chunks from the RTL-SDR at 1090 MHz. |
+| Capture | `capture.py` | Streams 2 Msps IQ chunks from the RTL-SDR at 1090 MHz. |
 | Detect | `detect.py` | Magnitude + preamble correlation to find candidate bursts. |
 | Decode | `decode.py`, `correct.py` | Vectorized PPM demodulation to a bit matrix; Mode S / ADS-B decode with CRC-syndrome error correction. |
 | Estimate | `estimate.py` | Per-burst carrier-frequency offset from the recovered phase. |
@@ -97,8 +97,12 @@ default). The map is a fullscreen "scope"; a left panel and a bottom scrubber fl
 
 ## Install & run
 
-Requires Python 3.11+ and an **RTL-SDR Blog v4** dongle (its ~1 ppm TCXO is stable enough
-over a single pass for the differential method above) with an antenna for 1090 MHz.
+Requires Python 3.11+ and an RTL-SDR (RTL2832U) dongle with an antenna for 1090 MHz. Any
+RTL-SDR runs it, but an **RTL-SDR Blog v4** is recommended: its ~1 ppm TCXO stays stable
+over a single pass, which the differential method above relies on. Generic or older
+non-TCXO dongles still decode fine, but oscillator drift within a pass adds noise to the
+Doppler measurement and the self-calibration. (Non-RTL hardware - Airspy, SDRplay, HackRF -
+isn't supported without code changes; capture is `pyrtlsdr`-specific.)
 
 The receiver's location is required - it's the reference point the predicted Doppler is
 computed against - so pass your antenna's latitude and longitude (and, for accurate range,
