@@ -228,12 +228,38 @@ def _friendly_sdr(err):
     return "SDR unavailable"
 
 
+def _dop_rgb(hz):
+    """Doppler (Hz) -> diverging RGB, matching the web's dopColor: + approaching
+    = blue, 0 = white, - receding = red."""
+    x = max(-1.0, min(1.0, hz / 600.0))
+    if x >= 0:
+        r = round(255 * (1 - x)); g = r; b = 255
+    else:
+        t = -x; r = 255; g = round(255 * (1 - t)); b = g
+    return r, g, b
+
+
+def _brand_text():
+    """'doppler1090' coloured per-character as a real Doppler pass (blue ->
+    white -> red), the same S-curve the web logo uses. rich downsamples the
+    truecolor to whatever the terminal supports, or drops it on a mono terminal."""
+    text, A, d = "doppler1090", 18.0, 20.0
+    n = len(text)
+    t = Text()
+    for i, ch in enumerate(text):
+        x = -A + 2 * A * i / (n - 1)
+        hz = 540.0 * (-x / (d * d + x * x) ** 0.5)   # radial-velocity S-curve
+        r, g, b = _dop_rgb(hz)
+        t.append(ch, style=f"bold #{r:02x}{g:02x}{b:02x}")
+    return t
+
+
 def build_header(status=None, clock=None):
     """A status line (receiver, uptime, aircraft, decode rate, SDR light) plus,
     when available, the ppm self-calibration readout - the same figures the web
     dashboard shows, so the terminal is where you'd read and act on --ppm."""
     st = status or {}
-    title = Text("doppler1090", style="bold")
+    title = _brand_text()
     title.append(" — live ADS-B & measured-vs-predicted Doppler", style="dim")
     line = Text()
     rx = st.get("rx")
