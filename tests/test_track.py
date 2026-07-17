@@ -164,3 +164,19 @@ def test_prune_keeps_recent_within_max_age():
     store._inject("a", 50.0, 100.0, 50.0, 1.0, 2.0, 90.0)
     store.prune(100.0)  # heard at 50, now 100 -> 50s <= 60s, keep
     assert "a" in store.icaos()
+
+
+def test_none_altitude_kept_last_known_and_never_crashes():
+    """pyModeS returns alt=None for an 'altitude unavailable' position frame
+    (valid lat/lon). It must not crash the geometry, and must not wipe a known
+    altitude."""
+    store = TrackStore()
+    store.update_position("abc", 0.0, 41.0, -87.0, None)     # altitude unavailable
+    store.update_velocity("abc", 0.0, 400.0, 90.0, 0.0)
+    store.add_burst("abc", 0.0, 100.0, (42.0, -88.0, 0.0))   # must not raise
+    assert store.burst_count("abc") == 0                     # no altitude -> no burst
+    store.update_position("abc", 1.0, 41.0, -87.0, 10000.0)  # real altitude arrives
+    store.add_burst("abc", 1.0, 100.0, (42.0, -88.0, 0.0))
+    assert store.burst_count("abc") == 1                     # now Doppler flows
+    store.update_position("abc", 2.0, 41.1, -87.1, None)     # unavailable again
+    assert store.latest("abc")["alt"] == 10000.0             # last known kept

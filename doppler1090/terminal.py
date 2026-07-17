@@ -82,7 +82,7 @@ def build_rows(store, rx_llh, min_conf=0.0, type_store=None):
             continue
         s = store.latest(icao)
         rng_km = 0.0
-        if all(k in s for k in ("lat", "lon", "alt")):
+        if all(s.get(k) is not None for k in ("lat", "lon", "alt")):
             ac = geodetic_to_ecef(s["lat"], s["lon"], s["alt"] * FT_TO_M)
             rng_km = float(np.linalg.norm(ac - rx) / 1000.0)
         samples = store._samples[icao]
