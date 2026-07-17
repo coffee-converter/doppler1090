@@ -7,3 +7,5 @@ doppler1090-data/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
+build/
+dist/

@@ -113,9 +113,8 @@ def test_replay_web_wires_serve_with_rx_and_bounds_from_file(tmp_path, monkeypat
     # never touching --lat/--lon. Fake serve() so nothing blocks or opens a tab.
     import os
     from doppler1090 import server
-    from doppler1090.cli import main
-    sample = os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
-                                          "examples", "sample-session.sqlite"))
+    from doppler1090.cli import main, _bundled_sample
+    sample = _bundled_sample()
     captured = {}
 
     def fake_serve(store, rx_llh, lock, min_conf, port, **kw):
@@ -138,3 +137,18 @@ def test_burst_rate_per_min_and_window():
     assert 55 < r.per_min(30.0) < 65
     r.add(100.0, 5)                 # events older than the window fall off
     assert r.per_min(100.0) == 60.0
+
+
+def test_demo_bundled_sample_exists_and_routes_to_replay(tmp_path, monkeypatch):
+    import os
+    from doppler1090 import server
+    from doppler1090.cli import main, _bundled_sample
+    assert os.path.exists(_bundled_sample())     # sample ships inside the package
+    captured = {}
+
+    def fake_serve(store, rx_llh, lock, min_conf, port, **kw):
+        captured["replay"] = kw.get("replay")
+
+    monkeypatch.setattr(server, "serve", fake_serve)
+    main(["--demo", "--web", "--no-lookup", "--data-dir", str(tmp_path)])
+    assert captured["replay"] is not None        # --demo played a session

@@ -188,7 +188,17 @@ def build_parser():
     p.add_argument("--replay-speed", type=float, default=1.0,
                    help="replay playback rate (default 1.0 = real time; "
                         "2.0 = twice as fast)")
+    p.add_argument("--demo", action="store_true",
+                   help="replay the bundled sample session - a self-contained "
+                        "way to try doppler1090 with no SDR; add --web for the "
+                        "browser dashboard")
     return p
+
+
+def _bundled_sample():
+    """Filesystem path to the sample session shipped inside the package."""
+    from importlib.resources import files
+    return str(files("doppler1090") / "examples" / "sample-session.sqlite")
 
 
 def _run_replay(args):
@@ -256,6 +266,8 @@ def _replay_web(args, history, rx_llh, min_conf, ppm, t_start, t_end, speed):
 def main(argv=None):
     args = build_parser().parse_args(argv)
 
+    if args.demo:
+        args.replay = _bundled_sample()
     if args.replay:
         return _run_replay(args)
     if args.lat is None or args.lon is None:
