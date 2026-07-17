@@ -60,7 +60,7 @@ def test_build_table_full_width_has_all_columns():
     rows = build_rows(store, (0.0, 0.0, 0.0))
     table = build_table(rows)                    # width=None -> full
     assert table.row_count == len(rows)
-    assert len(table.columns) == 15
+    assert len(table.columns) == 16
     assert [c.header for c in table.columns][:3] == ["ICAO", "Ident", "Aircraft"]
 
 
@@ -71,7 +71,9 @@ def test_build_table_drops_columns_as_width_narrows():
     full = len(build_table(rows, width=200).columns)
     compact = len(build_table(rows, width=120).columns)
     narrow = len(build_table(rows, width=80).columns)
-    assert full == 15 and compact == 11 and narrow == 8
+    assert full == 16 and compact == 11 and narrow == 8
+    assert "Trend" in [c.header for c in build_table(rows, width=200).columns]
+    assert "Trend" not in [c.header for c in build_table(rows, width=120).columns]
     # the fit diagnostics are the first to go; heading survives to narrow
     narrow_headers = [c.header for c in build_table(rows, width=80).columns]
     assert "Trk°" in narrow_headers
@@ -122,3 +124,26 @@ def test_build_header_shows_status_and_ppm():
     assert "-1.8" in out                 # absolute offset ppm
     assert "--ppm -2" in out             # suggestion = round(-1.8)
     assert "ADS-B" in out                # generalized title
+
+
+def test_sparkline_maps_range_to_bars():
+    from doppler1090.terminal import _sparkline
+    s = _sparkline([0, 1, 2, 3, 4, 5, 6, 7])
+    assert s[0] == "▁" and s[-1] == "█"          # min->lowest bar, max->highest
+    assert _sparkline([]) == ""
+    assert set(_sparkline([5, 5, 5])) == {"▁"}    # flat series -> flat bars
+
+
+def test_records_footer_full_set_and_empty():
+    import io
+    from rich.console import Console
+    from doppler1090.terminal import build_records_footer
+    recs = {"speed_kt": {"value": 512, "flight": "UAL2451", "icao": "a1"},
+            "dop_span_hz": {"value": 1740, "reg": "N12AB", "icao": "a2"}}
+    buf = io.StringIO()
+    Console(file=buf, width=120).print(build_records_footer(recs))
+    out = buf.getvalue()
+    assert "fastest" in out and "512kt" in out and "UAL2451" in out
+    assert "widest" in out and "1740Hz" in out
+    assert build_records_footer(None) is None
+    assert build_records_footer({}) is None

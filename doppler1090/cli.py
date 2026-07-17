@@ -316,6 +316,7 @@ def main(argv=None):
             use_faa=args.faa_registry)
     clockcal = ClockCal(os.path.join(args.data_dir, "clockcal.sqlite"),
                         ppm=args.ppm)
+    records = Records(os.path.join(args.data_dir, "records.sqlite"))
     health = server.Health()
     rate = _BurstRate()
     with Live(build_display([]), refresh_per_second=4, screen=True) as live:
@@ -333,13 +334,20 @@ def main(argv=None):
             rows = build_rows(store, rx_llh, min_conf=min_conf,
                               type_store=type_store)
             clock = clock_estimate(store, clockcal, now)
+            for r in rows:
+                records.observe({"icao": r.icao, "flight": r.flight,
+                                 "make": r.make, "model": r.model, "reg": r.reg,
+                                 "speed_kt": r.speed_kt, "alt": r.alt_ft,
+                                 "vrate": r.vrate_fpm, "range_km": r.range_km,
+                                 "rssi": r.rssi, "dop_span": r.dop_span}, now)
             status = {"rx": (rx_llh[0], rx_llh[1]),
                       "uptime_s": now - health.started,
                       "n_aircraft": len(rows),
                       "burst_rate": rate.per_min(now),
                       "sdr_state": health.snapshot(now)["state"]}
             live.update(build_display(rows, status, clock,
-                                      live.console.size.width))
+                                      live.console.size.width,
+                                      records=records.snapshot()))
 
 
 if __name__ == "__main__":

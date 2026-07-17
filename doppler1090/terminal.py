@@ -37,12 +37,32 @@ class Row:
     range_km: float
     dop_pred: float
     dop_meas: float
+    dop_span: float
+    spark: str
     rssi: float | None
     scale: float
     corr: float
     conf: float
     quality: float
     bursts: int
+
+
+_SPARK = "▁▂▃▄▅▆▇█"
+
+
+def _sparkline(series, n=12):
+    """A tiny unicode bar chart of the measured Doppler over the pass - the
+    curve shape at a glance, in one cell."""
+    vals = [float(v) for v in series]
+    if not vals:
+        return ""
+    if len(vals) > n:                      # evenly downsample to n bars
+        step = len(vals) / n
+        vals = [vals[int(i * step)] for i in range(n)]
+    lo, hi = min(vals), max(vals)
+    if hi - lo < 1e-9:
+        return _SPARK[0] * len(vals)
+    return "".join(_SPARK[min(7, int((v - lo) / (hi - lo) * 8))] for v in vals)
 
 
 def build_rows(store, rx_llh, min_conf=0.0, type_store=None):
@@ -83,6 +103,8 @@ def build_rows(store, rx_llh, min_conf=0.0, type_store=None):
             range_km=rng_km,
             dop_pred=float(samples[-1].doppler_pred),
             dop_meas=float(fit.measured_doppler[-1]),
+            dop_span=float(fit.dop_span),
+            spark=_sparkline(fit.measured_doppler),
             rssi=rssi,
             scale=fit.scale,
             corr=fit.correlation,
@@ -100,7 +122,7 @@ NARROW, COMPACT, FULL = 0, 1, 2
 
 
 def _tier(width):
-    if width is None or width >= 150:
+    if width is None or width >= 160:
         return FULL
     return COMPACT if width >= 100 else NARROW
 
@@ -138,6 +160,7 @@ _COLUMNS = [
     ("Sig dB",      COMPACT, lambda r: "-" if r.rssi is None else f"{r.rssi:.0f}"),
     ("Dop m(p) Hz", NARROW,  _dop_cell),
     ("Bursts",      COMPACT, lambda r: str(r.bursts)),
+    ("Trend",       FULL,    lambda r: r.spark),
     ("Scale",       FULL,    lambda r: f"{r.scale:.2f}"),
     ("Corr",        FULL,    lambda r: f"{r.corr:.2f}"),
     ("Conf",        FULL,    lambda r: f"{r.conf:.2f}"),
@@ -153,7 +176,7 @@ _TEXT_COLS = {"ICAO", "Ident", "Aircraft"}
 # Approx width the non-Aircraft columns of each tier need (content + padding).
 # Aircraft gets whatever's left, so the numeric columns always keep their digits
 # rather than rich shrinking everything proportionally.
-_NONAC_BUDGET = {NARROW: 76, COMPACT: 112, FULL: 156}
+_NONAC_BUDGET = {NARROW: 76, COMPACT: 104, FULL: 152}
 
 
 def build_table(rows, width=None):
@@ -225,10 +248,47 @@ def build_header(status=None, clock=None):
     return Group(*parts)
 
 
-def build_display(rows, status=None, clock=None, width=None):
-    """Full terminal frame: the status/ppm header above the aircraft table,
-    with the table's columns fitted to ``width``."""
-    return Group(build_header(status, clock), build_table(rows, width))
+_RECORD_LABELS = [
+    ("speed_kt", "fastest", "kt"), ("speed_min_kt", "slowest", "kt"),
+    ("alt_ft", "highest", "ft"), ("alt_min_ft", "lowest", "ft"),
+    ("vrate_max_fpm", "climb", "fpm"), ("vrate_min_fpm", "descent", "fpm"),
+    ("range_nm", "farthest", "nm"), ("closest_nm", "nearest", "nm"),
+    ("sig_max_db", "strongest", "dB"), ("sig_min_db", "weakest", "dB"),
+    ("dop_span_hz", "widest Δf", "Hz"),
+]
+
+
+def build_records_footer(records):
+    """A compact, static all-time-records strip. The web rotates records one at
+    a time; a terminal is for scanning, so show the whole set at once."""
+    if not records:
+        return None
+    cells = []
+    for metric, label, unit in _RECORD_LABELS:
+        r = records.get(metric)
+        if not r:
+            continue
+        who = (r.get("flight") or r.get("reg") or r.get("icao") or "?").strip()
+        cell = Text()
+        cell.append(f"{label} ", style="dim")
+        cell.append(f"{r['value']:.0f}{unit} ")
+        cell.append(who, style="cyan")
+        cells.append(cell)
+    if not cells:
+        return None
+    from rich.columns import Columns
+    return Group(Text("all-time records", style="dim"),
+                 Columns(cells, padding=(0, 2), equal=True))
+
+
+def build_display(rows, status=None, clock=None, width=None, records=None):
+    """Full terminal frame: the status/ppm header, the aircraft table (columns
+    fitted to ``width``), and the all-time-records strip when available."""
+    parts = [build_header(status, clock), build_table(rows, width)]
+    footer = build_records_footer(records)
+    if footer is not None:
+        parts.append(footer)
+    return Group(*parts)
 
 
 def render(rows, status=None, clock=None):
