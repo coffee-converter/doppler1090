@@ -34,3 +34,12 @@ def test_app_js_highlights_selected_aircraft():
     assert "planeIcon" in js               # rotated airplane icon
     assert "divIcon" in js                 # built as a Leaflet divIcon
     assert "setIcon" in js                 # icon updated on selection/heading
+
+
+def test_records_carousel_has_prev_next_controls():
+    js = _read("app.js")
+    html = _read("index.html")
+    # manual prev/next stepping through records (no auto-rotate)
+    assert "stepRecord" in js
+    assert "rec-prev" in html and "rec-next" in html
+    assert ".rec-nav" in _read("style.css")

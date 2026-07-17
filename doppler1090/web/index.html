@@ -25,11 +25,17 @@
         <span class="stat" id="h-clock" style="display:none" title="receiver oscillator estimate">osc&nbsp;<span class="v">–</span><span class="u">ppm</span></span>
       </div>
       <div class="record" id="h-record"
-           title="all-time records — cycling through the extremes this receiver has seen">
+           title="all-time records — the extremes this receiver has seen">
         <div class="rec-top">
           <span class="rec-label">records</span>
           <span class="rec-val">–</span>
           <span class="rec-date"></span>
+          <span class="rec-nav">
+            <button type="button" id="rec-prev" title="previous record"
+                    aria-label="previous record">‹</button>
+            <button type="button" id="rec-next" title="next record"
+                    aria-label="next record">›</button>
+          </span>
         </div>
         <div class="rec-who">waiting for aircraft…</div>
       </div>
