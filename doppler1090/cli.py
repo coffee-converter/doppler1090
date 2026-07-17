@@ -119,6 +119,16 @@ class _BurstRate:
         return total * 60.0 / elapsed
 
 
+def _live_status(rx_llh, health, rate, n_aircraft, now):
+    """The terminal status-header dict for the current frame."""
+    return {"rx": (rx_llh[0], rx_llh[1]),
+            "uptime_s": now - health.started,
+            "n_aircraft": n_aircraft,
+            "burst_rate": rate.per_min(now),
+            "sdr_state": health.snapshot(now)["state"],
+            "error": health.error}
+
+
 def build_parser():
     p = argparse.ArgumentParser(prog="doppler1090")
     p.add_argument("--lat", type=float,
@@ -319,35 +329,48 @@ def main(argv=None):
     records = Records(os.path.join(args.data_dir, "records.sqlite"))
     health = server.Health()
     rate = _BurstRate()
+    # Reconnect loop mirrors the web path: if the dongle can't be opened (not
+    # plugged in) or drops mid-stream, iq_chunks raises; instead of crashing we
+    # flag the error in the status header (red light) and retry, so plugging the
+    # SDR in recovers on its own.
     with Live(build_display([]), refresh_per_second=4, screen=True) as live:
-        for t, iq in iq_chunks(args.freq, args.fs, args.gain, args.ppm):
-            health.mark_chunk()
-            added = process_chunk(t, iq, args.fs, rx_llh, store, burst_len,
-                                  max_fix=max_fix, phase_search=args.phase_search,
-                                  threshold=args.threshold)
-            if store.icaos():                 # tracking anything -> SDR light green
-                health.mark_decode()
-            if recorder:
-                recorder.flush()
-            now = time.time()
-            rate.add(now, added)
-            rows = build_rows(store, rx_llh, min_conf=min_conf,
-                              type_store=type_store)
-            clock = clock_estimate(store, clockcal, now)
-            for r in rows:
-                records.observe({"icao": r.icao, "flight": r.flight,
-                                 "make": r.make, "model": r.model, "reg": r.reg,
-                                 "speed_kt": r.speed_kt, "alt": r.alt_ft,
-                                 "vrate": r.vrate_fpm, "range_km": r.range_km,
-                                 "rssi": r.rssi, "dop_span": r.dop_span}, now)
-            status = {"rx": (rx_llh[0], rx_llh[1]),
-                      "uptime_s": now - health.started,
-                      "n_aircraft": len(rows),
-                      "burst_rate": rate.per_min(now),
-                      "sdr_state": health.snapshot(now)["state"]}
-            live.update(build_display(rows, status, clock,
-                                      live.console.size.width,
-                                      records=records.snapshot()))
+        while True:
+            try:
+                for t, iq in iq_chunks(args.freq, args.fs, args.gain, args.ppm):
+                    health.mark_chunk()
+                    health.error = None           # data is flowing again
+                    added = process_chunk(t, iq, args.fs, rx_llh, store, burst_len,
+                                          max_fix=max_fix,
+                                          phase_search=args.phase_search,
+                                          threshold=args.threshold)
+                    if store.icaos():             # tracking anything -> light green
+                        health.mark_decode()
+                    if recorder:
+                        recorder.flush()
+                    now = time.time()
+                    rate.add(now, added)
+                    rows = build_rows(store, rx_llh, min_conf=min_conf,
+                                      type_store=type_store)
+                    clock = clock_estimate(store, clockcal, now)
+                    for r in rows:
+                        records.observe({"icao": r.icao, "flight": r.flight,
+                                         "make": r.make, "model": r.model,
+                                         "reg": r.reg, "speed_kt": r.speed_kt,
+                                         "alt": r.alt_ft, "vrate": r.vrate_fpm,
+                                         "range_km": r.range_km, "rssi": r.rssi,
+                                         "dop_span": r.dop_span}, now)
+                    live.update(build_display(
+                        rows, _live_status(rx_llh, health, rate, len(rows), now),
+                        clock, live.console.size.width,
+                        records=records.snapshot()))
+            except Exception as e:                # dongle missing / driver error
+                health.error = str(e)
+                live.update(build_display(
+                    build_rows(store, rx_llh, min_conf=min_conf,
+                               type_store=type_store),
+                    _live_status(rx_llh, health, rate, 0, time.time()),
+                    None, live.console.size.width))
+            time.sleep(2)                         # wait before reopening the dongle
 
 
 if __name__ == "__main__":

@@ -147,3 +147,17 @@ def test_records_footer_full_set_and_empty():
     assert "widest" in out and "1740Hz" in out
     assert build_records_footer(None) is None
     assert build_records_footer({}) is None
+
+
+def test_build_header_shows_friendly_sdr_error_and_raw_detail():
+    import io
+    from rich.console import Console
+    raw = '<LIBUSB_ERROR_IO (-1): Input/output error> "Could not open SDR (device index = 0)"'
+    status = {"rx": (42.0, -88.0), "uptime_s": 5, "n_aircraft": 0,
+              "burst_rate": 0, "sdr_state": "down", "error": raw}
+    buf = io.StringIO()
+    Console(file=buf, width=140).print(build_header(status, None))
+    out = buf.getvalue()
+    assert "down" in out
+    assert "No RTL-SDR detected" in out          # friendly headline
+    assert "Could not open SDR" in out           # raw detail retained

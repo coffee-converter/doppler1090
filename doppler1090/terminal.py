@@ -214,6 +214,20 @@ def _fmt_dur(s):
     return f"{h}h{m:02d}m" if h else f"{m}m{s:02d}s"
 
 
+def _friendly_sdr(err):
+    """Turn a raw SDR/libusb error into a one-line, plain-English hint."""
+    low = err.lower()
+    if any(k in low for k in ("busy", "claim", "resource_busy")):
+        return "RTL-SDR is busy - another program may be using it (e.g. dump1090)"
+    if any(k in low for k in ("permission", "access", "error_access")):
+        return "Can't access the RTL-SDR - a permission/driver issue"
+    if any(k in low for k in ("could not open", "not_found", "no supported",
+                              "no device", "index =", "index=")):
+        return ("No RTL-SDR detected - check it's plugged in and not in use by "
+                "another program")
+    return "SDR unavailable"
+
+
 def build_header(status=None, clock=None):
     """A status line (receiver, uptime, aircraft, decode rate, SDR light) plus,
     when available, the ppm self-calibration readout - the same figures the web
@@ -231,7 +245,12 @@ def build_header(status=None, clock=None):
     state = st.get("sdr_state", "down")
     line.append("● ", style=_SDR_STYLE.get(state, "dim"))
     line.append(state)
+    err = st.get("error")
+    if err:
+        line.append(f"  {_friendly_sdr(err)}", style="red")
     parts = [title, line]
+    if err:                                 # raw detail below, dimmed, for reports
+        parts.append(Text(err, style="dim"))
     if clock:
         off = clock["offset_ppm"]
         cur = clock.get("ppm") or 0
