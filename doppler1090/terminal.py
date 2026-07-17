@@ -105,9 +105,16 @@ def _tier(width):
     return COMPACT if width >= 100 else NARROW
 
 
+def _ident_cell(r):
+    # what identifies this aircraft to a human: its transmitted callsign
+    # (airliners) or, failing that, its tail number (GA/private)
+    return r.flight or r.reg or "-"
+
+
 def _aircraft_cell(r):
-    parts = [p for p in (r.model or r.make, r.reg) if p]
-    return " · ".join(parts) if parts else "-"
+    # just the type now - the tail number lives in the Ident column, so this
+    # stays short (a big width win over model + reg)
+    return r.model or r.make or "-"
 
 
 def _dop_cell(r):
@@ -121,7 +128,7 @@ def _dop_cell(r):
 # so a compact-only column just drops out in place when the terminal narrows.
 _COLUMNS = [
     ("ICAO",        NARROW,  lambda r: r.icao),
-    ("Flight",      NARROW,  lambda r: r.flight or "-"),
+    ("Ident",       NARROW,  _ident_cell),
     ("Aircraft",    NARROW,  _aircraft_cell),
     ("Alt ft",      NARROW,  lambda r: "-" if r.alt_ft is None else f"{r.alt_ft:.0f}"),
     ("V/S fpm",     COMPACT, lambda r: "-" if r.vrate_fpm is None else f"{r.vrate_fpm:+.0f}"),
@@ -138,15 +145,36 @@ _COLUMNS = [
 ]
 
 
+# Identity columns hold text: left-aligned, and truncated (never wrapped) so a
+# long make/model + reg stays on one line - one aircraft, one row.
+_TEXT_COLS = {"ICAO", "Ident", "Aircraft"}
+
+
+# Approx width the non-Aircraft columns of each tier need (content + padding).
+# Aircraft gets whatever's left, so the numeric columns always keep their digits
+# rather than rich shrinking everything proportionally.
+_NONAC_BUDGET = {NARROW: 76, COMPACT: 112, FULL: 156}
+
+
 def build_table(rows, width=None):
     """Build the rich Table, dropping lower-priority columns to fit ``width``
-    (None = full). Pure (no I/O), so it can be handed to rich.Live for
-    flicker-free in-place updates."""
+    (None = full). The identity 'Aircraft' column absorbs the width squeeze
+    (ellipsized) so numbers never wrap or truncate. Pure (no I/O), so it can be
+    handed to rich.Live for flicker-free in-place updates."""
     tier = _tier(width)
     cols = [c for c in _COLUMNS if c[1] <= tier]
+    # cap Aircraft to the leftover width so the numeric columns stay whole
+    ac_cap = None if width is None else max(8, width - _NONAC_BUDGET[tier])
     table = Table()
     for header, _, _ in cols:
-        table.add_column(header, justify="right")
+        if header == "Aircraft":
+            table.add_column(header, justify="left", no_wrap=True,
+                             overflow="ellipsis", max_width=ac_cap)
+        elif header in _TEXT_COLS:            # ICAO, Flight
+            table.add_column(header, justify="left", no_wrap=True,
+                             overflow="ellipsis")
+        else:                                 # numeric: never wrap a number
+            table.add_column(header, justify="right", no_wrap=True)
     for r in rows:
         table.add_row(*[fn(r) for _, _, fn in cols])
     return table

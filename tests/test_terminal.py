@@ -61,7 +61,7 @@ def test_build_table_full_width_has_all_columns():
     table = build_table(rows)                    # width=None -> full
     assert table.row_count == len(rows)
     assert len(table.columns) == 15
-    assert [c.header for c in table.columns][:3] == ["ICAO", "Flight", "Aircraft"]
+    assert [c.header for c in table.columns][:3] == ["ICAO", "Ident", "Aircraft"]
 
 
 def test_build_table_drops_columns_as_width_narrows():
