@@ -6,9 +6,13 @@
 // read: the client either polls /api/state (live) or /api/state?at=T (past),
 // while /api/timeline keeps the activity strip growing either way.
 
-// Zoom locked to the range the FAA sectional cache actually covers (native
-// tiles exist z8-z12; outside that the service 404s). Max 11 because
-// detectRetina pulls one level deeper, so map-zoom 11 already shows z12 tiles.
+// The FAA chart cache only has native tiles z8-z12; outside that the service
+// 404s. detectRetina pulls one level deeper, so map-zoom N requests z(N+1) and
+// knocks a layer's effective maxZoom down by 1. Map-zoom 11 already shows native
+// z12. Map-zoom 12 is one extra notch: the chart layers set maxNativeZoom 11 so
+// the retina request clamps back to native z12 and upscales (blurrier, no new
+// detail) instead of blanking, and maxZoom 13 so they stay selectable in the
+// layer picker at map-zoom 12 (13 - 1 retina = 12) rather than greying out.
 const map = L.map('map', { minZoom: 7, maxZoom: 12, zoomControl: false });
 // Zoom control on the right, by the layer picker — clear of the health strip.
 L.control.zoom({ position: 'topright' }).addTo(map);
@@ -31,7 +35,7 @@ const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
   { maxZoom: 19, detectRetina: true, attribution: '© OpenStreetMap' });
 const faaChart = name => L.tileLayer(
   `https://tiles.arcgis.com/tiles/ssFJjBXIUyZDrSYZ/arcgis/rest/services/${name}/MapServer/tile/{z}/{y}/{x}`,
-  { maxZoom: 12, minNativeZoom: 8, maxNativeZoom: 12, opacity: 0.4,
+  { maxZoom: 13, minNativeZoom: 8, maxNativeZoom: 11, opacity: 0.4,
     detectRetina: true, attribution: 'Aeronautical charts: FAA' });
 // IFR enroute as one auto-switching style: high-altitude (decluttered) when
 // zoomed out, low-altitude (detailed) when zoomed in. Both cover the whole
