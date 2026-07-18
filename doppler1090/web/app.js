@@ -824,6 +824,8 @@ const RECORD_SPECS = [
   { key: 'dop_span_hz',   label: 'widest Δf',        unit: ' Hz',  d: 0, cls: 'dop' },
 ];
 let recordIdx = -1;   // index of the record currently shown; -1 = none yet
+let recordHold = 0;   // epoch(ms) until which auto-rotate is paused (after a tap)
+let recordHover = false;
 
 // Human "time since" for all-time records (which may be days old).
 function relTime(ts) {
@@ -1143,6 +1145,16 @@ pollTimeline();
 setInterval(() => { if (mode === 'live') fetchState(null); }, 1000);
 setInterval(pollTimeline, 2000);
 refreshRecord();
-document.getElementById('rec-prev')?.addEventListener('click', () => stepRecord(-1));
-document.getElementById('rec-next')?.addEventListener('click', () => stepRecord(1));
+// Records slowly auto-advance (12s) so the panel stays alive and hints there
+// are several to see - but pause while hovering, or for 30s after a manual tap,
+// so rotation never pulls the record out from under you.
+const _recEl = document.getElementById('h-record');
+_recEl?.addEventListener('mouseenter', () => { recordHover = true; });
+_recEl?.addEventListener('mouseleave', () => { recordHover = false; });
+const _holdRecords = () => { recordHold = Date.now() + 30000; };
+document.getElementById('rec-prev')?.addEventListener('click', () => { stepRecord(-1); _holdRecords(); });
+document.getElementById('rec-next')?.addEventListener('click', () => { stepRecord(1); _holdRecords(); });
+setInterval(() => {
+  if (!recordHover && Date.now() >= recordHold && recordIdx >= 0) stepRecord(1);
+}, 12000);
 window.addEventListener('resize', () => { drawPlot(); drawTimeline(); });

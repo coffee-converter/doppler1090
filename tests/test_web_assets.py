@@ -39,7 +39,8 @@ def test_app_js_highlights_selected_aircraft():
 def test_records_carousel_has_prev_next_controls():
     js = _read("app.js")
     html = _read("index.html")
-    # manual prev/next stepping through records (no auto-rotate)
+    # records: slow auto-advance plus manual prev/next stepping
     assert "stepRecord" in js
+    assert "recordHover" in js                      # auto-rotate pauses on interaction
     assert "rec-prev" in html and "rec-next" in html
     assert ".rec-arrow" in _read("style.css")
