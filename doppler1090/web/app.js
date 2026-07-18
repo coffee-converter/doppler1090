@@ -359,10 +359,19 @@ function renderList() {
     div.appendChild(el('div', 'listwait', 'waiting for ADS-B data…'));
     return;
   }
+  div.appendChild(listHead());   // column labels, pinned while the list scrolls
   // live aircraft first (first-seen order, no reshuffle), then silent ones as
   // dimmed rows below - kept in the same scannable list, no separate pills.
   for (const a of latest.aircraft) div.appendChild(makeCard(a, false));
   for (const a of ghosts) div.appendChild(makeCard(a, true));
+}
+
+// Sticky column-header row; same grid as the data rows so the labels line up.
+function listHead() {
+  const h = el('div', 'row head');
+  ['flight', 'type', 'Doppler', 'alt', 'range'].forEach(
+    t => h.appendChild(el('span', null, t)));
+  return h;
 }
 
 // Per-row Doppler sparkline: predicted curve colored by sign (blue<->red),
@@ -808,12 +817,12 @@ const RECORD_SPECS = [
   { key: 'speed_min_kt',  label: 'slowest',          unit: ' kt',  d: 0, cls: 'spd' },
   { key: 'alt_ft',        label: 'highest',          unit: ' ft',  d: 0, cls: 'alt' },
   { key: 'alt_min_ft',    label: 'lowest',           unit: ' ft',  d: 0, cls: 'alt' },
-  { key: 'vrate_max_fpm', label: 'fastest climb',    unit: ' fpm', d: 0, cls: 'vrt' },
-  { key: 'vrate_min_fpm', label: 'steepest descent', unit: ' fpm', d: 0, cls: 'vrt' },
+  { key: 'vrate_max_fpm', label: 'climb',            unit: ' fpm', d: 0, cls: 'vrt' },
+  { key: 'vrate_min_fpm', label: 'descent',          unit: ' fpm', d: 0, cls: 'vrt' },
   { key: 'range_nm',      label: 'farthest',         unit: ' nm',  d: 0, cls: 'rng' },
   { key: 'closest_nm',    label: 'nearest',          unit: ' nm',  d: 1, cls: 'rng' },
-  { key: 'sig_max_db',    label: 'strongest signal', unit: ' dBFS', d: 0, cls: 'sig' },
-  { key: 'sig_min_db',    label: 'weakest signal',   unit: ' dBFS', d: 0, cls: 'sig' },
+  { key: 'sig_max_db',    label: 'strongest',        unit: ' dBFS', d: 0, cls: 'sig' },
+  { key: 'sig_min_db',    label: 'weakest',          unit: ' dBFS', d: 0, cls: 'sig' },
   { key: 'dop_span_hz',   label: 'widest Δf',        unit: ' Hz',  d: 0, cls: 'dop' },
 ];
 let recordIdx = -1;   // index of the record currently shown; -1 = none yet
