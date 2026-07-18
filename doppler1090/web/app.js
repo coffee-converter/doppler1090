@@ -744,8 +744,14 @@ const _safeUrl = u => /^https?:\/\//i.test(u || '') ? u : '';   // http(s)-only 
 // then callsign, type · registration, and a stale line for ghosts. The plot and
 // stats strip render below (renderStats), keeping the plot near the top.
 function renderMeta(meta, a, ghostSince) {
-  const frag = [];
-  if (a.photo) {
+  const frag = [el('div', 'callsign', a.flight || a.icao)];   // identity leads
+  const model = [typeLabel(a), a.reg].filter(Boolean).join(' · ');
+  if (model) frag.push(el('div', 'model', model));
+  if (ghostSince) {
+    const secs = Math.round((Date.now() - ghostSince) / 1000);
+    frag.push(el('div', 'stale', `stale · last heard ${secs}s ago`));
+  }
+  if (a.photo) {                                              // ...then the photo
     const fig = el('div', 'photo');
     const img = document.createElement('img');
     img.src = _safeUrl(a.photo); img.alt = a.flight || a.icao; img.loading = 'lazy';
@@ -765,13 +771,6 @@ function renderMeta(meta, a, ghostSince) {
       fig.append(cr);
     }
     frag.push(fig);
-  }
-  frag.push(el('div', 'callsign', a.flight || a.icao));
-  const model = [typeLabel(a), a.reg].filter(Boolean).join(' · ');
-  if (model) frag.push(el('div', 'model', model));
-  if (ghostSince) {
-    const secs = Math.round((Date.now() - ghostSince) / 1000);
-    frag.push(el('div', 'stale', `stale · last heard ${secs}s ago`));
   }
   meta.replaceChildren(...frag);
 }
