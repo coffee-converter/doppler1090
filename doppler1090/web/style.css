@@ -78,9 +78,6 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #hud .rec-cycle:active { color: var(--ink); }
 /* no click focus-ring (looks clunky on the HUD), but keep it for keyboard users */
 #hud .rec-cycle:focus:not(:focus-visible) { outline: none; }
-/* hourglass is disabled when the shown record's session can't be replayed */
-#hud #rec-replay[disabled] { opacity: .3; cursor: default;
-                             color: var(--accent); text-shadow: none; }
 
 /* record-replay banner: sits above the header while replaying a past session */
 #replay-banner { display: flex; align-items: center; gap: 10px;

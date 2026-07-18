@@ -952,8 +952,6 @@ function renderRecord(el, spec, r) {
   const who = [r.flight || r.reg,          // callsign if known, else the tail
                [r.make, r.model].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
   el.querySelector('.rec-who').textContent = who || r.icao || '';
-  const rep = document.getElementById('rec-replay');   // replayable only if timestamped
-  if (rep) rep.disabled = !(r && r.ts != null);
 }
 
 // The record object currently shown in the ticker (has ts + icao), or null.
@@ -967,11 +965,7 @@ async function replayRecord(ts, icao) {
   let hit;
   try { hit = await (await fetch('/api/session?at=' + ts)).json(); }
   catch (e) { return; }
-  if (!hit || !hit.session) {                // unrecorded / deleted session
-    const rep = document.getElementById('rec-replay');
-    if (rep) { rep.title = 'no recording for this record'; rep.disabled = true; }
-    return;
-  }
+  if (!hit || !hit.session) return;          // unrecorded / deleted session: no-op
   viewSession = hit.session;
   playing = false;
   await pollTimeline();                       // load that session's [start, end]
