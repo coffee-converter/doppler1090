@@ -179,7 +179,7 @@ function render(state) {
   if (mode === 'live') hadAircraft = state.aircraft.length > 0;
   if (!receiverMarker && state.receiver && state.receiver.lat != null) {
     receiverMarker = L.circleMarker([state.receiver.lat, state.receiver.lon],
-      { radius: 7, color: '#000', weight: 2, fillColor: '#ffd400', fillOpacity: 1 })
+      { radius: 7, color: '#000', weight: 2, fillColor: '#4be3e9', fillOpacity: 1 })
       .addTo(map).bindTooltip('receiver');
     centerOnVisible(state.receiver.lat, state.receiver.lon);  // visible-area centre
     drawRangeRings(state.receiver);
