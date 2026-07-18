@@ -338,7 +338,8 @@ function makeCard(a, ghost) {
   const spark = el('canvas', 'spark');
   if ((a.conf ?? 1) < 0.4) spark.classList.add('dim');   // weak fit -> faded trend
   row.append(spark);
-  row.append(el('span', 'alt', a.alt != null ? String(Math.round(a.alt / 100)) : '–'));
+  row.append(el('span', 'alt', a.alt != null      // flight level: alt/100, 3-digit
+    ? String(Math.round(a.alt / 100)).padStart(3, '0') : '–'));
   const nm = a.range_km ? a.range_km / 1.852 : null;     // km -> nautical miles
   row.append(el('span', 'rng',
     nm == null ? '–' : (nm >= 10 ? String(Math.round(nm)) : nm.toFixed(1))));
