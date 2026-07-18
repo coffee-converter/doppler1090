@@ -198,7 +198,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 /* media row: photo thumbnail beside the telemetry list - no wasted space */
 #meta .media { display: flex; gap: 12px; align-items: stretch; margin: 9px 0 3px; }
 #meta .photo { flex: 0 0 auto; margin: 0; }
-#meta .photo img { display: block; width: 132px; height: 92px; object-fit: cover;
+#meta .photo img { display: block; width: 164px; height: 92px; object-fit: cover;
                    border-radius: 6px; cursor: zoom-in; }
 #meta .credit { font-size: 9px; color: #57626f; margin-top: 3px; }
 #meta .credit a { color: inherit; text-decoration: none; }
