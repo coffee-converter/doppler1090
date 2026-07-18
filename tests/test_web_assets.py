@@ -46,6 +46,14 @@ def test_records_carousel_has_prev_next_controls():
     assert ".rec-cycle" in _read("style.css")
 
 
+def test_selecting_off_screen_plane_reveals_it_on_map():
+    js = _read("app.js")
+    # a selected plane is eased into the visible map area when it's off-screen
+    assert "flyToFit" in js
+    assert "isOnScreen" in js                       # do-nothing guard when visible
+    assert "pendingFit" in js                       # fresh autoselect reveals too
+
+
 def test_left_pane_structure():
     js = _read("app.js")
     html = _read("index.html")

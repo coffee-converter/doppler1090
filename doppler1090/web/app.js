@@ -74,6 +74,7 @@ let receiverMarker = null, ringsDrawn = false;
 let layers = {};              // icao -> { marker, tracks:[polyline], data, ghostSince }
 let selLayers = [];           // line-of-sight + closest-approach overlays
 let selected = null;
+let pendingFit = null;        // icao to reveal on the map after this render (fresh autoselect)
 let latest = { aircraft: [] };
 let serverNow = 0;            // most recent server_time seen
 let hadAircraft = false;      // did the last live frame have any aircraft?
@@ -167,6 +168,7 @@ function render(state) {
   if (mode === 'live' && !hasSel && state.aircraft.length && !hadAircraft) {
     selected = state.aircraft[0].icao;
     document.getElementById('rail').classList.add('selected');
+    pendingFit = selected;   // fresh pick: reveal it once markers are placed
   }
   if (mode === 'live') hadAircraft = state.aircraft.length > 0;
   if (!receiverMarker && state.receiver && state.receiver.lat != null) {
@@ -236,6 +238,8 @@ function render(state) {
   drawPlot();
   updateHud();
   refreshRecord();
+  // markers now placed: reveal a freshly auto-selected plane if it's off-screen
+  if (pendingFit != null) { maybeFit(pendingFit); pendingFit = null; }
 }
 
 function removeEntry(icao) {
@@ -529,8 +533,10 @@ function planeIcon(track, sel, ghost, info) {
 }
 
 function select(icao) {
+  const prev = selected;
   selected = (selected === icao) ? null : icao;   // click again to deselect
   document.getElementById('rail').classList.toggle('selected', !!selected);
+  if (selected && selected !== prev) maybeFit(selected);   // new pick: reveal it
   render(latest);
 }
 
@@ -559,9 +565,65 @@ function selectAt(pt) {
     return;
   }
   const i = cands.findIndex(x => x.icao === selected);
+  const prev = selected;
   selected = cands[(i + 1) % cands.length].icao;   // i<0 -> topmost; else descend
   document.getElementById('rail').classList.add('selected');
+  if (selected !== prev) maybeFit(selected);       // new pick: reveal if off-screen
   render(latest);
+}
+
+// ---- reveal the selected aircraft when it's off the visible map ----------
+// Selecting a plane (by click or a fresh autoselect) should never leave it
+// hidden behind the panel or off-view. If it's already visible we don't move.
+const FIT_FLOOR_Z = 8;      // don't zoom out past the FAA chart-detail floor
+const FIT_MARGIN = 0.14;    // keep the framed pair clear of the very edges
+const FIT_MS = 600;         // flyTo ease duration
+
+// Is (lat,lon) inside the *visible* map rect — right of the ~320px panel and
+// above the ~84px console? On mobile the map fills the screen (sheet floats
+// over it), so the whole map counts.
+function isOnScreen(lat, lon) {
+  const p = map.latLngToContainerPoint([lat, lon]);
+  const size = map.getSize();
+  const narrow = window.innerWidth <= 760;
+  const left = narrow ? 0 : 320, bottom = narrow ? 0 : 84;
+  return p.x >= left && p.x <= size.x && p.y >= 0 && p.y <= size.y - bottom;
+}
+
+// Ease the map so both the aircraft and the receiver sit inside the visible
+// rect. Caps: never zoom out past the chart floor (fall back to centring the
+// plane alone), never zoom in past the current view.
+function flyToFit(lat, lon) {
+  if (!receiverMarker) return;
+  const size = map.getSize();
+  if (window.innerWidth <= 760) {              // map behind the sheet: just centre
+    const z = Math.max(FIT_FLOOR_Z, Math.min(map.getZoom(), 11));
+    map.flyTo([lat, lon], z, { duration: FIT_MS / 1000 });
+    return;
+  }
+  const a = L.latLng(lat, lon), b = receiverMarker.getLatLng();
+  const vw = (size.x - 320) * (1 - FIT_MARGIN);   // visible-rect span, minus margin
+  const vh = (size.y - 84) * (1 - FIT_MARGIN);
+  // largest zoom (never above current) at which the pair spans within the rect
+  let z = Math.min(map.getZoom(), map.getMaxZoom());
+  for (; z > FIT_FLOOR_Z; z--) {
+    const pa = map.project(a, z), pb = map.project(b, z);
+    if (Math.abs(pa.x - pb.x) <= vw && Math.abs(pa.y - pb.y) <= vh) break;
+  }
+  const pa = map.project(a, z), pb = map.project(b, z);
+  const fits = Math.abs(pa.x - pb.x) <= vw && Math.abs(pa.y - pb.y) <= vh;
+  // fits -> centre on the pair's midpoint; floor hit -> frame the plane alone
+  const mid = fits ? pa.add(pb).divideBy(2) : pa;
+  const dx = (320 + size.x) / 2 - size.x / 2;   // +160, clear the panel
+  const dy = (size.y - 84) / 2 - size.y / 2;    // -42, clear the console
+  map.flyTo(map.unproject(mid.subtract([dx, dy]), z), z, { duration: FIT_MS / 1000 });
+}
+
+// Reveal `icao` only if it has a position and is currently off-screen.
+function maybeFit(icao) {
+  const d = layers[icao] && layers[icao].data;
+  if (!d || d.lat == null) return;
+  if (!isOnScreen(d.lat, d.lon)) flyToFit(d.lat, d.lon);
 }
 
 // Marker stacking: selected on top of everything, then live aircraft by altitude
