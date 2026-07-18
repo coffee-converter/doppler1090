@@ -187,3 +187,15 @@ def test_state_rejects_bad_session_name(tmp_path):
         assert snap["aircraft"] == []
     finally:
         httpd.shutdown()
+
+
+def test_session_resolver_maps_ts_to_session(tmp_path):
+    httpd, base, name = _serve_dir(tmp_path)
+    try:
+        hit = _get(base, "/api/session?at=1002")
+        assert hit["session"] == name
+        assert hit["t_start"] == 1000.0 and hit["t_end"] == 1005.0
+        miss = _get(base, "/api/session?at=9999")
+        assert miss["session"] is None
+    finally:
+        httpd.shutdown()

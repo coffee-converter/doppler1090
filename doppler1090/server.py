@@ -186,8 +186,25 @@ def _make_handler(store, rx_llh, lock, min_conf, history, type_store, health,
                 self._state(parse_qs(route.query))
             elif route.path == "/api/timeline":
                 self._timeline()
+            elif route.path == "/api/session":
+                self._session(parse_qs(route.query))
             else:
                 self._static()
+
+        def _session(self, query):
+            # Resolve a record's epoch to the recorded session file that covers
+            # it (for the records-ticker replay hourglass), plus that session's
+            # scrub bounds. No data_dir / no match -> {"session": null}.
+            at = query.get("at", [None])[0]
+            if at is None or data_dir is None:
+                self._send(200, "application/json", b'{"session": null}')
+                return
+            name = find_session(data_dir, float(at), max_age)
+            body = {"session": name}
+            if name:
+                lo, hi = _history_for(name).bounds()
+                body["t_start"], body["t_end"] = lo, hi
+            self._send(200, "application/json", json.dumps(body).encode())
 
         def _state(self, query):
             at = query.get("at", [None])[0]
