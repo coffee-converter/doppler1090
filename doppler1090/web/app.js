@@ -89,6 +89,7 @@ let playing = false, speed = 1;
 const SPEEDS = [1, 2, 5, 10, 20];   // playback multipliers cycled by the button
 let tl = null;                // { start, end, buckets, recording }
 let isReplay = false;         // replay: auto-play + loop, no true live frame
+let viewSession = null;       // basename of a past session being replayed (null = live/home)
 let inflight = false;         // guards overlapping /api/state fetches
 
 const GHOST_TTL_MS = 5 * 60 * 1000;
@@ -951,6 +952,43 @@ function renderRecord(el, spec, r) {
   const who = [r.flight || r.reg,          // callsign if known, else the tail
                [r.make, r.model].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
   el.querySelector('.rec-who').textContent = who || r.icao || '';
+  const rep = document.getElementById('rec-replay');   // replayable only if timestamped
+  if (rep) rep.disabled = !(r && r.ts != null);
+}
+
+// The record object currently shown in the ticker (has ts + icao), or null.
+function currentRecord() {
+  return recordIdx >= 0 ? (latest.records || {})[RECORD_SPECS[recordIdx].key] : null;
+}
+
+// Enter a same-window replay of the session that set the record at `ts`, with
+// `icao` selected at that instant. No covering session -> leave a brief hint.
+async function replayRecord(ts, icao) {
+  let hit;
+  try { hit = await (await fetch('/api/session?at=' + ts)).json(); }
+  catch (e) { return; }
+  if (!hit || !hit.session) {                // unrecorded / deleted session
+    const rep = document.getElementById('rec-replay');
+    if (rep) { rep.title = 'no recording for this record'; rep.disabled = true; }
+    return;
+  }
+  viewSession = hit.session;
+  playing = false;
+  await pollTimeline();                       // load that session's [start, end]
+  seek(ts);                                   // fetchState(ts) with the session set
+  if (icao) { selected = icao;
+    document.getElementById('rail').classList.add('selected'); }
+  showReplayBanner(hit.session);
+}
+
+// session-YYYYMMDD-HHMMSS.sqlite -> a friendly "replaying session <date> <time>".
+function showReplayBanner(session) {
+  const b = document.getElementById('replay-banner');
+  const m = /session-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(session);
+  b.querySelector('.rb-txt').textContent = m
+    ? `replaying session ${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}`
+    : 'replaying session';
+  b.hidden = false;
 }
 
 // The record is advanced by the ⟳ cycle button and by the slow auto-rotate.
@@ -1134,6 +1172,11 @@ scrub.addEventListener('pointerup', e => { scrubbing = false; });
 
 // ---- time-travel machine -------------------------------------------------
 function goLive() {
+  if (viewSession) {           // leaving a record replay: drop the session override
+    viewSession = null;
+    document.getElementById('replay-banner').hidden = true;
+    pollTimeline();            // restore the home (live / launch-replay) strip
+  }
   if (isReplay) {              // no live frame in replay: resume the looping sweep
     mode = 'past'; playing = true;
     document.getElementById('console').classList.add('past');
@@ -1170,8 +1213,11 @@ async function fetchState(at) {
   if (inflight) return;
   inflight = true;
   try {
-    const url = at == null ? '/api/state' : `/api/state?at=${at}`;
-    const r = await fetch(url);
+    const p = new URLSearchParams();
+    if (at != null) p.set('at', at);
+    if (viewSession) p.set('session', viewSession);   // reconstruct that session
+    const q = p.toString();
+    const r = await fetch('/api/state' + (q ? '?' + q : ''));
     render(await r.json());
   } catch (e) {
     // server unreachable: keep the last frame but flag the light red
@@ -1182,7 +1228,7 @@ async function fetchState(at) {
 }
 async function pollTimeline() {
   try {
-    const r = await fetch('/api/timeline');
+    const r = await fetch('/api/timeline' + (viewSession ? '?session=' + viewSession : ''));
     tl = await r.json();
     document.getElementById('transport').classList.toggle('norecord', !tl.recording);
     drawTimeline();
@@ -1284,6 +1330,9 @@ setInterval(() => {
   if (!playing || mode !== 'past' || !tl) return;
   let next = viewTime + speed * 0.25;
   if (next >= tl.end) {
+    // record replay: stop at the session end, stay in the session (LIVE exits)
+    if (viewSession) { viewTime = tl.end; playing = false;
+      updateTransport(); positionPlayhead(); fetchState(viewTime); return; }
     if (!isReplay) { playing = false; goLive(); return; }
     next = tl.t_start ?? tl.start;   // replay: loop back to the start
   }
@@ -1324,6 +1373,12 @@ _recEl?.addEventListener('mouseenter', () => { recordHover = true; });
 _recEl?.addEventListener('mouseleave', () => { recordHover = false; });
 const _holdRecords = () => { recordHold = Date.now() + 30000; };
 document.getElementById('rec-cycle')?.addEventListener('click', () => { stepRecord(1); _holdRecords(); });
+document.getElementById('rec-replay')?.addEventListener('click', () => {
+  const r = currentRecord();
+  if (r && r.ts != null) replayRecord(r.ts, r.icao);
+  _holdRecords();
+});
+document.getElementById('rb-live')?.addEventListener('click', goLive);
 setInterval(() => {
   if (!recordHover && Date.now() >= recordHold && recordIdx >= 0) stepRecord(1);
 }, 12000);

@@ -62,6 +62,13 @@ def test_record_replay_controls_present():
     assert "#replay-banner" in css
 
 
+def test_replay_from_record_wiring():
+    js = _read("app.js")
+    assert "viewSession" in js                 # session override on fetches
+    assert "/api/session" in js                # resolves the record's session
+    assert "replayRecord" in js                # hourglass click handler
+
+
 def test_left_pane_structure():
     js = _read("app.js")
     html = _read("index.html")
