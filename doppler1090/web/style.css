@@ -55,14 +55,16 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
    that set it below. */
 #hud .record { margin-top: 8px; font-family: var(--mono);
                transition: opacity .2s ease; min-height: 30px; }
-/* ‹ › step buttons at the right of the label row */
-#hud .rec-nav { display: inline-flex; align-items: center; gap: 1px; }
-#hud .rec-nav button { font-family: var(--mono); font-size: 15px; line-height: 1;
-                       background: none; border: none; padding: 0 4px;
-                       color: var(--ink-dim); cursor: pointer; opacity: .75; }
-#hud .rec-nav button:hover { opacity: 1; color: var(--ink); }
-/* top row: name, value, then date pushed to the right. */
-#hud .rec-top { display: flex; align-items: baseline; gap: 8px; }
+/* ‹ › step buttons flanking the record name - persistent chips so they read as
+   tappable at rest (no hover needed on touch), with a comfortable tap target. */
+#hud .rec-arrow { font-family: var(--mono); font-size: 15px; line-height: 1;
+                  background: rgba(255,255,255,.06); border: none;
+                  padding: 3px 8px; margin: 0; border-radius: 5px;
+                  color: #c3cdd8; cursor: pointer; align-self: center; }
+#hud .rec-arrow:hover { background: rgba(255,255,255,.14); color: var(--ink); }
+#hud .rec-arrow:active { background: rgba(255,255,255,.22); }
+/* top row: ‹ name › then value, with the date pushed to the right. */
+#hud .rec-top { display: flex; align-items: baseline; gap: 6px; }
 #hud .rec-label { font-size: 10px; text-transform: uppercase; letter-spacing: .5px;
                   font-weight: 600; color: #c3cdd8; }
 #hud .rec-val { font-weight: 700; font-size: 13px; white-space: nowrap;

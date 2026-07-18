@@ -42,4 +42,4 @@ def test_records_carousel_has_prev_next_controls():
     # manual prev/next stepping through records (no auto-rotate)
     assert "stepRecord" in js
     assert "rec-prev" in html and "rec-next" in html
-    assert ".rec-nav" in _read("style.css")
+    assert ".rec-arrow" in _read("style.css")
