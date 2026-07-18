@@ -482,7 +482,10 @@ function keywordShape(a) {
           'C182', 'C152', 'PA-', 'SR2', 'BONANZA')) return ['cessna', 1];
   if (has('GULFSTREAM', 'LEARJET', 'CITATION', 'CHALLENGER', 'FALCON',
           'HAWKER', 'GLOBAL', 'PHENOM')) return ['hi_perf', 0.95];
-  return ['airliner', 1];
+  // Unknown/unmatched: the ICAO type table already covers real airliners, so
+  // whatever reaches here is almost always an obscure light/GA/vintage type
+  // (e.g. a Stampe SV4 biplane) - default to a light prop, not a jet.
+  return ['cessna', 1];
 }
 
 // Prefer the exact ICAO type designator (tar1090 map), else the keyword fallback.
