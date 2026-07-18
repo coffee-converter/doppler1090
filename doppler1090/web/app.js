@@ -99,6 +99,7 @@ let tl = null;                // { start, end, buckets, recording }
 let isReplay = false;         // replay: auto-play + loop, no true live frame
 let viewSession = null;       // basename of a past session being replayed (null = live/home)
 let inflight = false;         // guards overlapping /api/state fetches
+let queuedAt;                 // latest frame requested while a fetch is in flight (coalesced)
 
 const GHOST_TTL_MS = 5 * 60 * 1000;
 function ghostFade(ageMs) { return 0.5 - 0.38 * Math.min(1, ageMs / GHOST_TTL_MS); }
@@ -1212,6 +1213,7 @@ function goLive() {
     selected = null;
     document.getElementById('rail').classList.remove('selected');
     for (const icao of Object.keys(layers)) removeEntry(icao);
+    hadAircraft = false;       // let the first live frame re-trigger auto-select
     pollTimeline();            // restore the home (live / launch-replay) strip
   }
   if (isReplay) {              // no live frame in replay: resume the looping sweep
@@ -1251,7 +1253,11 @@ function seek(t) {
   fetchState(viewTime);
 }
 async function fetchState(at) {
-  if (inflight) return;
+  // Coalesce: if a fetch is in flight, remember the latest requested frame and
+  // run it when the current one finishes - so a seek fired behind an in-flight
+  // live poll is never silently dropped (which would strand a record replay on
+  // the previous frame with nothing left to re-fetch it).
+  if (inflight) { queuedAt = at; return; }
   inflight = true;
   try {
     const p = new URLSearchParams();
@@ -1265,7 +1271,10 @@ async function fetchState(at) {
     const el = document.getElementById('h-sdr');
     if (el) { el.className = 'stat sdr down';
       document.getElementById('h-sdr-txt').textContent = 'offline'; }
-  } finally { inflight = false; }
+  } finally {
+    inflight = false;
+    if (queuedAt !== undefined) { const q = queuedAt; queuedAt = undefined; fetchState(q); }
+  }
 }
 async function pollTimeline() {
   try {
@@ -1371,8 +1380,10 @@ setInterval(() => {
   if (!playing || mode !== 'past' || !tl) return;
   let next = viewTime + speed * 0.25;
   if (next >= tl.end) {
-    // record replay: stop at the session end, stay in the session (LIVE exits)
-    if (viewSession) { viewTime = tl.end; playing = false;
+    // record replay: stop at the last recorded frame, stay in the session (LIVE
+    // exits). Use t_end (real data end), not the grid-aligned tl.end, which can
+    // sit a bucket past the data and reconstruct to an empty frame.
+    if (viewSession) { viewTime = tl.t_end ?? tl.end; playing = false;
       updateTransport(); positionPlayhead(); fetchState(viewTime); return; }
     if (!isReplay) { playing = false; goLive(); return; }
     next = tl.t_start ?? tl.start;   // replay: loop back to the start
