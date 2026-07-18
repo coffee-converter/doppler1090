@@ -1110,6 +1110,36 @@ document.getElementById('list').addEventListener('pointerdown', e => {
   if (hit) select(hit.dataset.icao);
 });
 
+// ---- photo lightbox ------------------------------------------------------
+// Tapping the detail thumbnail opens the full photo. `by` is untrusted API text
+// (textContent only); `link` was http(s)-gated when stored on the thumbnail.
+function openLightbox(photo, link, by) {
+  document.getElementById('lb-img').src = photo;
+  const cap = document.getElementById('lb-credit');
+  cap.replaceChildren();
+  if (link) {
+    const a = document.createElement('a');
+    a.href = link; a.target = '_blank'; a.rel = 'noopener';
+    a.textContent = by ? '© ' + by : 'view source';
+    cap.appendChild(a);
+  } else if (by) {
+    cap.textContent = '© ' + by;
+  }
+  document.getElementById('lightbox').hidden = false;
+}
+function closeLightbox() {
+  document.getElementById('lightbox').hidden = true;
+  document.getElementById('lb-img').src = '';
+}
+document.getElementById('detail').addEventListener('click', e => {
+  const thumb = e.target.closest('.thumb');
+  if (thumb && thumb.dataset.photo)
+    openLightbox(thumb.dataset.photo, thumb.dataset.link, thumb.dataset.by);
+});
+document.getElementById('lightbox').addEventListener('click', e => {
+  if (e.target.id === 'lightbox' || e.target.closest('#lb-close')) closeLightbox();
+});
+
 // playback tick: advance the virtual clock, snap back to live at the end
 setInterval(() => {
   if (!playing || mode !== 'past' || !tl) return;
@@ -1126,7 +1156,10 @@ setInterval(() => {
 window.addEventListener('keydown', e => {
   if (e.key === ' ') { e.preventDefault(); document.getElementById('playPause').click(); }
   else if (e.key.toLowerCase() === 'l') goLive();
-  else if (e.key === 'Escape') select(selected);
+  else if (e.key === 'Escape') {
+    if (!document.getElementById('lightbox').hidden) closeLightbox();
+    else select(selected);
+  }
   else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') cycle(e.key === 'ArrowRight' ? 1 : -1);
 });
 function cycle(dir) {

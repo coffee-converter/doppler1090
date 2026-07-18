@@ -196,6 +196,24 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #meta .placeholder { color: var(--ink-dim); font-size: 13px;
                      text-align: center; padding: 22px 4px; }
 
+/* ---- photo lightbox --------------------------------------------------- */
+#lightbox { position: fixed; inset: 0; z-index: 2000; padding: 24px;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(3,5,8,.86);
+            backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+#lightbox[hidden] { display: none; }
+#lightbox figure { margin: 0; max-width: 94vw; }
+#lightbox img { display: block; max-width: 94vw; max-height: 82vh;
+                border-radius: 8px; box-shadow: 0 10px 44px rgba(0,0,0,.6); }
+#lightbox figcaption { margin-top: 9px; text-align: center;
+                       font-size: 12px; color: var(--ink-dim); }
+#lightbox figcaption a { color: var(--ink-dim); text-decoration: none; }
+#lightbox figcaption a:hover { color: var(--accent); }
+#lb-close { position: fixed; top: 14px; right: 18px; z-index: 1;
+            background: none; border: none; color: var(--ink);
+            font-size: 24px; line-height: 1; cursor: pointer; }
+#lb-close:hover { color: var(--accent); }
+
 /* ---- bottom bar: scrubber only ---------------------------------------- */
 #console {
   position: fixed; left: 320px; right: 10px; bottom: 10px; z-index: 1000;
