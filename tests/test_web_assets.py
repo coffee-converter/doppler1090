@@ -44,3 +44,18 @@ def test_records_carousel_has_prev_next_controls():
     assert "recordHover" in js                      # auto-rotate pauses on interaction
     assert "rec-cycle" in html                      # single cycle control
     assert ".rec-cycle" in _read("style.css")
+
+
+def test_left_pane_structure():
+    js = _read("app.js")
+    html = _read("index.html")
+    css = _read("style.css")
+    # compact list: a column-header row and a tight stats strip render function
+    assert "listHead" in js                         # sticky column headers
+    assert "renderStats" in js                      # detail stats strip
+    assert 'id="stats"' in html                     # plot-first detail's stats element
+    # detail is a dismissable bottom sheet on mobile
+    assert 'id="sheet-close"' in html
+    assert "#rail.selected #detail" in css          # sheet slides up on selection
+    # the lightbox was removed (larger inline photo instead)
+    assert "lightbox" not in js and "lightbox" not in html
