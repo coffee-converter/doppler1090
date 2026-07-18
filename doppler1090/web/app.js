@@ -728,32 +728,41 @@ const STAT_HELP = {
 
 const _safeUrl = u => /^https?:\/\//i.test(u || '') ? u : '';   // http(s)-only sink guard
 
-// Identity block: a small photo thumbnail (tap = lightbox) beside the callsign,
-// type · registration, and a stale line for ghosts. The plot and the stats strip
-// render below it (renderStats), so the plot sits right under the identity.
+// Identity block: a larger inline photo of the tail (source thumbnails are only
+// so big, so show it at full panel width rather than hiding it behind a click),
+// then callsign, type · registration, and a stale line for ghosts. The plot and
+// stats strip render below (renderStats), keeping the plot near the top.
 function renderMeta(meta, a, ghostSince) {
-  const idrow = el('div', 'id');
+  const frag = [];
   if (a.photo) {
-    const thumb = el('div', 'thumb');
-    thumb.dataset.photo = _safeUrl(a.photo);            // lightbox reads these
-    thumb.dataset.link = _safeUrl(a.photo_link || a.photo);
-    thumb.dataset.by = a.photo_by || '';
+    const fig = el('div', 'photo');
     const img = document.createElement('img');
     img.src = _safeUrl(a.photo); img.alt = a.flight || a.icao; img.loading = 'lazy';
-    img.onerror = () => thumb.remove();
-    thumb.append(img);
-    idrow.append(thumb);
+    img.onerror = () => fig.remove();
+    fig.append(img);
+    const link = _safeUrl(a.photo_link);        // attribution (required by sources)
+    if (link || a.photo_by) {
+      const cr = el('div', 'credit');
+      if (link) {
+        const alink = document.createElement('a');
+        alink.href = link; alink.target = '_blank'; alink.rel = 'noopener';
+        alink.textContent = '© ' + (a.photo_by || 'source');   // untrusted -> textContent
+        cr.appendChild(alink);
+      } else {
+        cr.textContent = '© ' + a.photo_by;
+      }
+      fig.append(cr);
+    }
+    frag.push(fig);
   }
-  const idtext = el('div', 'idtext');
-  idtext.append(el('div', 'callsign', a.flight || a.icao));
+  frag.push(el('div', 'callsign', a.flight || a.icao));
   const model = [typeLabel(a), a.reg].filter(Boolean).join(' · ');
-  if (model) idtext.append(el('div', 'model', model));
+  if (model) frag.push(el('div', 'model', model));
   if (ghostSince) {
     const secs = Math.round((Date.now() - ghostSince) / 1000);
-    idtext.append(el('div', 'stale', `stale · last heard ${secs}s ago`));
+    frag.push(el('div', 'stale', `stale · last heard ${secs}s ago`));
   }
-  idrow.append(idtext);
-  meta.replaceChildren(idrow);
+  meta.replaceChildren(...frag);
 }
 
 // Tight stats strip below the plot: kinematics (colour-coded to the map palette)
@@ -1110,36 +1119,6 @@ document.getElementById('list').addEventListener('pointerdown', e => {
   if (hit) select(hit.dataset.icao);
 });
 
-// ---- photo lightbox ------------------------------------------------------
-// Tapping the detail thumbnail opens the full photo. `by` is untrusted API text
-// (textContent only); `link` was http(s)-gated when stored on the thumbnail.
-function openLightbox(photo, link, by) {
-  document.getElementById('lb-img').src = photo;
-  const cap = document.getElementById('lb-credit');
-  cap.replaceChildren();
-  if (link) {
-    const a = document.createElement('a');
-    a.href = link; a.target = '_blank'; a.rel = 'noopener';
-    a.textContent = by ? '© ' + by : 'view source';
-    cap.appendChild(a);
-  } else if (by) {
-    cap.textContent = '© ' + by;
-  }
-  document.getElementById('lightbox').hidden = false;
-}
-function closeLightbox() {
-  document.getElementById('lightbox').hidden = true;
-  document.getElementById('lb-img').src = '';
-}
-document.getElementById('detail').addEventListener('click', e => {
-  const thumb = e.target.closest('.thumb');
-  if (thumb && thumb.dataset.photo)
-    openLightbox(thumb.dataset.photo, thumb.dataset.link, thumb.dataset.by);
-});
-document.getElementById('lightbox').addEventListener('click', e => {
-  if (e.target.id === 'lightbox' || e.target.closest('#lb-close')) closeLightbox();
-});
-
 // playback tick: advance the virtual clock, snap back to live at the end
 setInterval(() => {
   if (!playing || mode !== 'past' || !tl) return;
@@ -1156,10 +1135,7 @@ setInterval(() => {
 window.addEventListener('keydown', e => {
   if (e.key === ' ') { e.preventDefault(); document.getElementById('playPause').click(); }
   else if (e.key.toLowerCase() === 'l') goLive();
-  else if (e.key === 'Escape') {
-    if (!document.getElementById('lightbox').hidden) closeLightbox();
-    else select(selected);
-  }
+  else if (e.key === 'Escape') select(selected);
   else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') cycle(e.key === 'ArrowRight' ? 1 : -1);
 });
 function cycle(dir) {

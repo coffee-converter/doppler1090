@@ -169,13 +169,13 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #plotlegend .predicted::before { width: 12px; height: 0;
                                  border-top: 2px solid var(--predicted); }
 #plot { width: 100%; height: 185px; background: transparent; }
-/* identity: a small photo thumbnail (tap = lightbox) beside the callsign and
-   type · registration; a stale line for ghosts. */
-#meta .id { display: flex; gap: 10px; align-items: flex-start; }
-#meta .thumb { flex: 0 0 auto; width: 58px; height: 44px; border-radius: 5px;
-               overflow: hidden; background: #10161e; cursor: zoom-in; }
-#meta .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-#meta .idtext { min-width: 0; }
+/* larger inline photo of the tail (source thumbnails aren't big, so show it at
+   full panel width rather than behind a click), then callsign + type · reg. */
+#meta .photo { margin-bottom: 9px; }
+#meta .photo img { display: block; width: 100%; height: auto; border-radius: 6px; }
+#meta .credit { font-size: 9px; color: #57626f; margin-top: 3px; text-align: right; }
+#meta .credit a { color: inherit; text-decoration: none; }
+#meta .credit a:hover { color: var(--accent); }
 #meta .callsign { font-size: 17px; font-weight: 600; letter-spacing: .4px;
                   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #meta .model { font-size: 12px; color: var(--ink-dim); margin-top: 2px;
@@ -195,24 +195,6 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #stats .kin .trk { color: #b399ec; }
 #meta .placeholder { color: var(--ink-dim); font-size: 13px;
                      text-align: center; padding: 22px 4px; }
-
-/* ---- photo lightbox --------------------------------------------------- */
-#lightbox { position: fixed; inset: 0; z-index: 2000; padding: 24px;
-            display: flex; align-items: center; justify-content: center;
-            background: rgba(3,5,8,.86);
-            backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
-#lightbox[hidden] { display: none; }
-#lightbox figure { margin: 0; max-width: 94vw; }
-#lightbox img { display: block; max-width: 94vw; max-height: 82vh;
-                border-radius: 8px; box-shadow: 0 10px 44px rgba(0,0,0,.6); }
-#lightbox figcaption { margin-top: 9px; text-align: center;
-                       font-size: 12px; color: var(--ink-dim); }
-#lightbox figcaption a { color: var(--ink-dim); text-decoration: none; }
-#lightbox figcaption a:hover { color: var(--accent); }
-#lb-close { position: fixed; top: 14px; right: 18px; z-index: 1;
-            background: none; border: none; color: var(--ink);
-            font-size: 24px; line-height: 1; cursor: pointer; }
-#lb-close:hover { color: var(--accent); }
 
 /* ---- bottom bar: scrubber only ---------------------------------------- */
 #console {
