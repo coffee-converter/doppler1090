@@ -61,15 +61,16 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
    for reliable symbol coverage. */
 #hud .rec-cycle { font-family: system-ui, sans-serif; font-size: 15px;
                   font-weight: 700; line-height: 1; background: none; border: none;
-                  padding: 2px 3px; margin: 0; color: var(--accent);
-                  cursor: pointer; transition: color .12s, text-shadow .12s; }
+                  padding: 2px 4px 2px 0; margin: 0; color: var(--accent);
+                  cursor: pointer; transform: translateY(-1px);  /* optical centre vs caps */
+                  transition: color .12s, text-shadow .12s; }
 #hud .rec-cycle:hover { color: #7ff0f4; text-shadow: 0 0 8px var(--accent-dim); }
 #hud .rec-cycle:active { color: var(--ink); }
 /* top row: cycle control, record name, value, then date pushed to the right. */
 #hud .rec-top { display: flex; align-items: center; gap: 6px; }
-#hud .rec-label { font-size: 10px; text-transform: uppercase; letter-spacing: .5px;
-                  font-weight: 600; color: #c3cdd8; }
-#hud .rec-val { font-weight: 700; font-size: 13px; white-space: nowrap;
+#hud .rec-label { font-size: 12px; text-transform: uppercase; letter-spacing: .5px;
+                  font-weight: 600; color: #c3cdd8; }   /* match the value size */
+#hud .rec-val { font-weight: 700; font-size: 12px; white-space: nowrap;
                 color: var(--ink-dim); }   /* muted until a metric class colours it */
 #hud .rec-date { margin-left: auto; font-size: 9px; color: var(--ink-dim);
                  white-space: nowrap; }
