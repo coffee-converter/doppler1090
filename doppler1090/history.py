@@ -13,7 +13,9 @@ request threads each open their own read-only connection, so scrubbing never
 blocks live capture.
 """
 
+import glob
 import os
+import re
 import sqlite3
 import time
 
@@ -275,3 +277,33 @@ def read_session_meta(path):
         raise ValueError(f"{path}: no session metadata (empty sessions table)")
     lat, lon, alt, ppm = row
     return (lat, lon, alt), int(ppm or 0)
+
+
+_SESSION_RE = re.compile(r"^session-\d{8}-\d{6}\.sqlite$")
+
+
+def valid_session_name(name):
+    """True for exactly a ``session-YYYYMMDD-HHMMSS.sqlite`` basename - the guard
+    against path traversal when a session name arrives from the client."""
+    return bool(name) and bool(_SESSION_RE.match(name))
+
+
+def list_sessions(data_dir):
+    """Recorded session files in ``data_dir``, newest-first by name."""
+    paths = [p for p in glob.glob(os.path.join(data_dir, "session-*.sqlite"))
+             if valid_session_name(os.path.basename(p))]
+    return sorted(paths, reverse=True)
+
+
+def find_session(data_dir, ts, max_age):
+    """Basename of the session whose recorded extent contains epoch ``ts``, else
+    None. Sessions never overlap (one receiver records one at a time), so at most
+    one matches; a 1 s slack absorbs boundary rounding."""
+    for p in list_sessions(data_dir):
+        try:
+            lo, hi = History(p, max_age=max_age).bounds()
+        except Exception:
+            continue
+        if lo is not None and hi is not None and lo - 1.0 <= ts <= hi + 1.0:
+            return os.path.basename(p)
+    return None
