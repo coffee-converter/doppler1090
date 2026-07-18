@@ -264,21 +264,18 @@ const NM_TO_M = 1852;
 function drawRangeRings(rx) {
   if (ringsDrawn) return;
   ringsDrawn = true;
-  // Minor inner rings (dimmer, finer dash) give a close-in scale for overhead /
-  // nearby traffic; the major rings step out to the horizon.
-  const rings = [{ nm: 5, minor: true }, { nm: 10, minor: true },
-    { nm: 25 }, { nm: 50 }, { nm: 75 }, { nm: 100 },
-    { nm: 150 }, { nm: 200 }, { nm: 250 }];
-  for (const { nm, minor } of rings) {
+  // 5 and 10 nm give a close-in scale for overhead / nearby traffic; the rest
+  // step out to the horizon.
+  for (const nm of [5, 10, 25, 50, 75, 100, 150, 200, 250]) {
     const r = nm * NM_TO_M;
-    L.circle([rx.lat, rx.lon], { radius: r, fill: false, color: '#4be3e9',
-      weight: minor ? 1 : 1.4, opacity: minor ? 0.32 : 0.6,
-      dashArray: minor ? '3 7' : '6 6', interactive: false }).addTo(map);
+    L.circle([rx.lat, rx.lon], { radius: r, fill: false,
+      color: '#4be3e9', weight: 1.4, opacity: 0.6, dashArray: '6 6',
+      interactive: false }).addTo(map);
     L.marker([rx.lat + r / 111320, rx.lon], {
       interactive: false,
       icon: L.divIcon({ className: 'ring-label',
         html: `<span style="display:block;width:48px;text-align:center;` +
-              `color:#bfeef1;opacity:${minor ? '.55' : '.9'};font:9px ui-monospace,monospace;` +
+              `color:#bfeef1;opacity:.9;font:9px ui-monospace,monospace;` +
               `text-shadow:0 0 3px #000,0 0 2px #000">${nm} nm</span>`,
         iconSize: [48, 11], iconAnchor: [24, 6] }),
     }).addTo(map);
