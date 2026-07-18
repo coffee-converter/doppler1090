@@ -699,6 +699,7 @@ function drawPlot() {
   }
   ctx.globalAlpha = 1; ctx.lineWidth = 1;
   renderMeta(meta, a, found.ghostSince);
+  renderStats(document.getElementById('stats'), a);
 }
 
 function el(tag, cls, text) {
@@ -725,63 +726,58 @@ const STAT_HELP = {
      + 'stronger (e.g. −24 is a stronger signal than −40).',
 };
 
+const _safeUrl = u => /^https?:\/\//i.test(u || '') ? u : '';   // http(s)-only sink guard
+
+// Identity block: a small photo thumbnail (tap = lightbox) beside the callsign,
+// type · registration, and a stale line for ghosts. The plot and the stats strip
+// render below it (renderStats), so the plot sits right under the identity.
 function renderMeta(meta, a, ghostSince) {
-  const trk = a.track != null ? Math.round(a.track) + '°' : '-';
-  const range_nm = a.range_km != null ? (a.range_km / 1.852).toFixed(1) : '-';
-  const cell = (k, v, u) => {
-    const c = el('div', 'stat stat-' + k);   // per-metric class for colour
-    if (STAT_HELP[k]) c.title = STAT_HELP[k];   // plain-English hover explainer
-    c.append(el('span', 'k', k));
-    const val = el('span', 'v', String(v));
-    if (u) val.append(el('span', 'u', u));
-    c.append(val);
-    return c;
-  };
-  const grid = (cls, items) => {
-    const g = el('div', 'stats ' + cls);
-    for (const [k, v, u] of items) g.append(cell(k, v, u));
-    return g;
-  };
-  // range/alt/spd/trk are the headline metrics; scale/corr/conf/bursts are the
-  // fit diagnostics, shown muted below.
-  const primary = grid('primary', [
-    ['range', range_nm, a.range_km != null ? 'nm' : ''],
-    ['alt', a.alt ?? '-', a.alt != null ? 'ft' : ''],
-    ['spd', a.speed_kt ?? '-', a.speed_kt != null ? 'kt' : ''],
-    ['trk', trk],
-  ]);
-  const secondary = grid('secondary', [
-    ['scale', a.scale], ['corr', a.corr], ['conf', a.conf], ['bursts', a.bursts],
-    ['sig', a.rssi != null ? Math.round(a.rssi) : '-', a.rssi != null ? 'dBFS' : ''],
-  ]);
-  const head = el('div', 'callsign', a.flight || a.icao);
-  const frag = [head];
+  const idrow = el('div', 'id');
+  if (a.photo) {
+    const thumb = el('div', 'thumb');
+    thumb.dataset.photo = _safeUrl(a.photo);            // lightbox reads these
+    thumb.dataset.link = _safeUrl(a.photo_link || a.photo);
+    thumb.dataset.by = a.photo_by || '';
+    const img = document.createElement('img');
+    img.src = _safeUrl(a.photo); img.alt = a.flight || a.icao; img.loading = 'lazy';
+    img.onerror = () => thumb.remove();
+    thumb.append(img);
+    idrow.append(thumb);
+  }
+  const idtext = el('div', 'idtext');
+  idtext.append(el('div', 'callsign', a.flight || a.icao));
   const model = [typeLabel(a), a.reg].filter(Boolean).join(' · ');
-  if (model) frag.push(el('div', 'model', model));
-  if (a.flight) frag.push(el('div', 'sub', a.icao));
+  if (model) idtext.append(el('div', 'model', model));
   if (ghostSince) {
     const secs = Math.round((Date.now() - ghostSince) / 1000);
-    frag.push(el('div', 'stale', `stale · last heard ${secs}s ago`));
+    idtext.append(el('div', 'stale', `stale · last heard ${secs}s ago`));
   }
-  frag.push(primary, secondary);
-  // a real photo of this exact tail (planespotters, by registration); clicking
-  // opens the full photo page. Sits at the top of the detail.
-  if (a.photo) {
-    // photo URLs come from third-party APIs; only let http(s) reach the href/src
-    // sinks so a compromised upstream can't inject a javascript: URL.
-    const safeUrl = u => /^https?:\/\//i.test(u || '') ? u : '';
-    const fig = el('div', 'photo');
-    const link = el('a');
-    link.href = safeUrl(a.photo_link || a.photo); link.target = '_blank'; link.rel = 'noopener';
-    const img = document.createElement('img');
-    img.src = safeUrl(a.photo); img.alt = model || a.flight || a.icao; img.loading = 'lazy';
-    img.onerror = () => fig.remove();     // e.g. offline: drop the broken image
-    link.append(img); fig.append(link);
-    if (a.photo_by)
-      fig.append(el('div', 'credit', '© ' + a.photo_by + ' · planespotters.net'));
-    frag.unshift(fig);
-  }
-  meta.replaceChildren(...frag);
+  idrow.append(idtext);
+  meta.replaceChildren(idrow);
+}
+
+// Tight stats strip below the plot: kinematics (colour-coded to the map palette)
+// on one line, fit diagnostics muted on the next - replaces the big tiles.
+function renderStats(box, a) {
+  const f2 = v => (v == null ? '–' : Number(v).toFixed(2));
+  const chip = (cls, txt, help) => {
+    const s = el('span', 'st' + (cls ? ' ' + cls : ''), txt);
+    if (help && STAT_HELP[help]) s.title = STAT_HELP[help];
+    return s;
+  };
+  const kin = el('div', 'kin');
+  kin.append(
+    chip('rng', a.range_km != null ? (a.range_km / 1.852).toFixed(1) + ' nm' : '–', 'range'),
+    chip('alt', a.alt != null ? 'FL' + String(Math.round(a.alt / 100)).padStart(3, '0') : '–', 'alt'),
+    chip('spd', a.speed_kt != null ? Math.round(a.speed_kt) + ' kt' : '–', 'spd'),
+    chip('trk', a.track != null ? Math.round(a.track) + '°' : '–', 'trk'));
+  const fit = el('div', 'fit');
+  fit.append(
+    chip('', 'corr ' + f2(a.corr), 'corr'),
+    chip('', 'conf ' + f2(a.conf), 'conf'),
+    chip('', a.bursts + ' brst', 'bursts'),
+    chip('', a.rssi != null ? Math.round(a.rssi) + ' dBFS' : '–', 'sig'));
+  box.replaceChildren(kin, fit);
 }
 
 // ---- health strip --------------------------------------------------------

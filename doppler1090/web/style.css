@@ -147,17 +147,18 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 /* detail: pinned to the bottom of the pane, with a distinct darker background
    so it reads as separate from the scrollable list above. Always shown — it
    holds a placeholder when nothing is selected. */
-#detail { flex: 0 0 auto; min-height: 360px; padding: 11px 10px 12px;
+#detail { flex: 0 0 auto; min-height: 300px; padding: 11px 10px 12px;
           background: #090d12; border-top: 1px solid var(--edge-lit); }
 #detail #meta { margin-bottom: 10px; }   /* details sit above the graph */
 /* nothing selected: centre the placeholder in the detail area */
 #rail:not(.selected) #detail { display: flex; align-items: center;
                                justify-content: center; }
 #rail:not(.selected) #detail #meta { margin-bottom: 0; }
-/* the graph only appears once an aircraft is selected */
-#plotlegend, #plot { display: none; }
+/* the graph + stats strip only appear once an aircraft is selected */
+#plotlegend, #plot, #stats { display: none; }
 #rail.selected #plotlegend { display: flex; }
 #rail.selected #plot { display: block; }
+#rail.selected #stats { display: block; }
 /* legend above the plot (top-right) so it never overlaps the data */
 #plotlegend { justify-content: flex-end; gap: 14px;
               font-size: 11px; color: var(--ink-dim); margin-bottom: 2px; }
@@ -168,52 +169,30 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #plotlegend .predicted::before { width: 12px; height: 0;
                                  border-top: 2px solid var(--predicted); }
 #plot { width: 100%; height: 185px; background: transparent; }
-#meta .callsign { font-size: 18px; font-weight: 600; letter-spacing: .4px; }
-#meta .model { display: block; font-size: 13px; color: var(--ink);
-               margin-top: 3px; }
-#meta .sub { font-size: 12px; color: var(--ink-dim); margin-top: 5px;
-             font-family: var(--mono); }
-/* photo of the actual tail (full-width), clickable to the full photo page */
-#meta .photo { margin-bottom: 11px; }
-#meta .photo a { display: block; }
-#meta .photo img { display: block; width: 100%; border-radius: 6px; }
-#meta .credit { font-size: 9px; color: #424c5b; margin-top: 3px;
-                text-align: right; }
-#meta .stale { font-size: 12px; color: var(--gold); margin-top: 4px; }
-#meta .stats { display: grid; gap: 6px; margin-top: 10px; }
-#meta .stats.primary { grid-template-columns: repeat(2, 1fr); }
-#meta .stats.secondary { grid-template-columns: repeat(5, 1fr); margin-top: 6px; }
-#meta .stat { background: #10161e; border: 1px solid var(--edge);
-              border-radius: 6px; padding: 6px 5px; min-width: 0; }
-#meta .stat .k { display: block; font-size: 9px; text-transform: uppercase;
-                 letter-spacing: .6px; color: var(--ink-dim); }
-/* values must never truncate: nowrap so a number never wraps mid-digit, but no
-   ellipsis clipping (a 5-digit altitude like 36000 was losing its last digit) */
-#meta .stat .v { display: block; font-size: 13px; color: var(--ink);
-                 margin-top: 3px; font-family: var(--mono); white-space: nowrap; }
-#meta .stat .u { font-size: 10px; color: inherit; margin-left: 3px; }
-/* primary metrics: larger, accent-tinted */
-#meta .stats.primary .stat { padding: 7px 9px; background: #121c22;
-                             border-left: 3px solid var(--accent-dim); }
-#meta .stats.primary .k { color: var(--ink-dim); }   /* names stay muted/white-ish */
-#meta .stats.primary .v { font-size: 16px; margin-top: 3px; }
-/* each headline metric gets its own muted hue for at-a-glance recognition:
-   range=teal (echoes the range rings), alt=sky blue, spd=amber, trk=violet */
-/* the value + unit carry the metric's colour (names stay muted), plus a
-   matching left stripe, for at-a-glance recognition */
-#meta .stats.primary .stat-range { border-left-color: #3fb8bd; }
-#meta .stats.primary .stat-range .v { color: #4cc8ce; }
-#meta .stats.primary .stat-alt { border-left-color: #5f9ce4; }
-#meta .stats.primary .stat-alt .v { color: #74aef0; }
-#meta .stats.primary .stat-spd { border-left-color: #d29a48; }
-#meta .stats.primary .stat-spd .v { color: #e8ad56; }
-#meta .stats.primary .stat-trk { border-left-color: #9f85da; }
-#meta .stats.primary .stat-trk .v { color: #b399ec; }
-/* secondary fit diagnostics: muted line */
-#meta .stats.secondary .stat { background: transparent; border-color: #172230;
-                               padding: 5px 4px; }
-#meta .stats.secondary .k { font-size: 8px; }
-#meta .stats.secondary .v { font-size: 12px; color: var(--ink-dim); }
+/* identity: a small photo thumbnail (tap = lightbox) beside the callsign and
+   type · registration; a stale line for ghosts. */
+#meta .id { display: flex; gap: 10px; align-items: flex-start; }
+#meta .thumb { flex: 0 0 auto; width: 58px; height: 44px; border-radius: 5px;
+               overflow: hidden; background: #10161e; cursor: zoom-in; }
+#meta .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+#meta .idtext { min-width: 0; }
+#meta .callsign { font-size: 17px; font-weight: 600; letter-spacing: .4px;
+                  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#meta .model { font-size: 12px; color: var(--ink-dim); margin-top: 2px;
+               white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#meta .stale { font-size: 12px; color: var(--gold); margin-top: 3px; }
+/* tight stats strip below the plot: kinematics (coloured) then fit (muted) -
+   replaces the big metric tiles. */
+#stats { margin-top: 9px; font-family: var(--mono);
+         font-variant-numeric: tabular-nums; }
+#stats .kin, #stats .fit { display: flex; flex-wrap: wrap; gap: 3px 12px; }
+#stats .fit { margin-top: 5px; }
+#stats .st { font-size: 12px; color: var(--ink-dim); white-space: nowrap; }
+#stats .kin .st { font-size: 13px; font-weight: 600; }
+#stats .kin .rng { color: #4cc8ce; }
+#stats .kin .alt { color: #74aef0; }
+#stats .kin .spd { color: #e8ad56; }
+#stats .kin .trk { color: #b399ec; }
 #meta .placeholder { color: var(--ink-dim); font-size: 13px;
                      text-align: center; padding: 22px 4px; }
 
