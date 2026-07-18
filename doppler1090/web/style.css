@@ -108,37 +108,27 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #list { flex: 1 1 auto; overflow-y: auto; padding: 8px; min-height: 40px; }
 #list .listwait { color: var(--ink-dim); font-size: 13px; text-align: center;
                   padding: 30px 12px; }
+/* one dense scan row: flight · type · tiny Doppler spark · altitude · range */
 #list .row {
-  display: flex; flex-direction: column; gap: 5px; width: 100%; box-sizing: border-box;
-  margin: 3px 0; padding: 7px 10px; min-width: 0; overflow: hidden;
+  display: grid; align-items: center; column-gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr) 54px 3ch 4.5ch;
+  width: 100%; box-sizing: border-box; margin: 2px 0; padding: 4px 9px;
   background: #10161e; color: var(--ink); border: 1px solid var(--edge);
-  border-left: 3px solid var(--edge-lit); border-radius: 6px; cursor: pointer;
+  border-left: 3px solid var(--edge-lit); border-radius: 5px; cursor: pointer;
 }
 #list .row:hover { border-color: var(--edge-lit); background: #131b25; }
 #list .row.sel { border-color: var(--accent); border-left-color: var(--accent);
                  background: rgba(53,208,214,.08); }
-#list .row.ghost { opacity: .5; font-style: italic; }
+#list .row.ghost { opacity: .45; }
 #list .row.ghost.sel { opacity: 1; }
-/* top line: callsign + make/model (dim, ellipsized). The sparkline lives on
-   its own full-width row below, so a long model never squeezes the graph. */
-#list .top { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
-#list .cs { flex: 0 0 auto; font-weight: 600; font-size: 13px; letter-spacing: .3px;
-            white-space: nowrap; }
-#list .type { flex: 1 1 auto; min-width: 0; font-size: 11px; color: var(--ink-dim);
-              white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-#list .spark { display: block; width: 100%; height: 28px; }
-
-/* silent aircraft collapse to pills (flight/tail only); clicking one selects
-   it, which expands it back into a full card above */
-#list .pillbox { display: flex; flex-wrap: wrap; gap: 5px;
-                 padding: 8px 2px 2px; margin-top: 4px;
-                 border-top: 1px solid var(--edge); }
-#list .pill { font-size: 11px; font-weight: 600; color: var(--ink-dim);
-              background: #10161e; border: 1px solid var(--edge);
-              border-left: 3px solid var(--edge-lit);   /* match the cards */
-              border-radius: 999px; padding: 3px 9px; cursor: pointer;
-              white-space: nowrap; font-style: italic; }
-#list .pill:hover { border-color: var(--edge-lit); color: var(--ink); }
+#list .cs { font-weight: 600; font-size: 12px; letter-spacing: .3px; white-space: nowrap; }
+#list .type { font-size: 10px; color: var(--ink-dim); text-transform: uppercase;
+              letter-spacing: .3px; white-space: nowrap; overflow: hidden;
+              text-overflow: ellipsis; }
+#list .spark { display: block; width: 54px; height: 18px; }
+#list .spark.dim { opacity: .3; }   /* low-confidence fit -> faded trend */
+#list .alt, #list .rng { font-size: 11px; text-align: right; color: var(--ink-dim);
+                         font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 /* detail: pinned to the bottom of the pane, with a distinct darker background
    so it reads as separate from the scrollable list above. Always shown — it

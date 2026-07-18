@@ -325,20 +325,24 @@ function typeLabel(a) {
   return [a.make, a.model].filter(Boolean).join(' ');
 }
 
-// Full aircraft card: callsign + make/model on the top line, Doppler sparkline
-// full-width below. Used for live aircraft and the one expanded (selected) ghost.
+// One dense scan row: flight · type · tiny Doppler spark · altitude · range.
+// The spark dims on a low-confidence fit, folding trust into the trend you're
+// already reading. Used for live aircraft and (dimmed) for ghosts.
 function makeCard(a, ghost) {
   const row = el('div', 'row');
   if (a.icao === selected) row.classList.add('sel');
   if (ghost) row.classList.add('ghost');
-  const top = el('div', 'top');
-  top.append(el('span', 'cs', a.flight || a.icao),
-             el('span', 'type', typeLabel(a)));
-  const spark = el('canvas', 'spark');
-  spark.width = 320; spark.height = 56;   // backing store; CSS gives it full width
   row.dataset.icao = a.icao;              // clicks handled by a delegated listener
-  row.append(top, spark);
-  requestAnimationFrame(() => drawSpark(spark, a));   // draw once flex width is known
+  row.append(el('span', 'cs', a.flight || a.icao));
+  row.append(el('span', 'type', a.type || a.model || a.make || ''));
+  const spark = el('canvas', 'spark');
+  if ((a.conf ?? 1) < 0.4) spark.classList.add('dim');   // weak fit -> faded trend
+  row.append(spark);
+  row.append(el('span', 'alt', a.alt != null ? String(Math.round(a.alt / 100)) : '–'));
+  const nm = a.range_km ? a.range_km / 1.852 : null;     // km -> nautical miles
+  row.append(el('span', 'rng',
+    nm == null ? '–' : (nm >= 10 ? String(Math.round(nm)) : nm.toFixed(1))));
+  requestAnimationFrame(() => drawSpark(spark, a));   // draw once the cell has width
   return row;
 }
 
@@ -355,21 +359,10 @@ function renderList() {
     div.appendChild(el('div', 'listwait', 'waiting for ADS-B data…'));
     return;
   }
-  // live aircraft: full cards, first-seen order (no reshuffle as conf updates)
+  // live aircraft first (first-seen order, no reshuffle), then silent ones as
+  // dimmed rows below - kept in the same scannable list, no separate pills.
   for (const a of latest.aircraft) div.appendChild(makeCard(a, false));
-  // silent aircraft collapse to pills; the selected one expands to a full card
-  const pills = ghosts.filter(a => a.icao !== selected);
-  const openGhost = ghosts.find(a => a.icao === selected);
-  if (openGhost) div.appendChild(makeCard(openGhost, true));
-  if (pills.length) {
-    const box = el('div', 'pillbox');
-    for (const a of pills) {
-      const pill = el('div', 'pill', a.flight || a.icao);
-      pill.dataset.icao = a.icao;
-      box.appendChild(pill);
-    }
-    div.appendChild(box);
-  }
+  for (const a of ghosts) div.appendChild(makeCard(a, true));
 }
 
 // Per-row Doppler sparkline: predicted curve colored by sign (blue<->red),
