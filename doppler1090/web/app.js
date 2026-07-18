@@ -996,16 +996,15 @@ async function replayRecord(ts, icao) {
     document.getElementById('rail').classList.add('selected');
     pendingFly = icao;                        // fly in close once the frame renders
   }
-  showReplayBanner(hit.session);
+  showReplayBanner(ts);
 }
 
-// session-YYYYMMDD-HHMMSS.sqlite -> a friendly "replaying session <date> <time>".
-function showReplayBanner(session) {
+// Compact, never-truncated banner: "⧗ replaying · 3 d ago", with the exact
+// moment on hover. The scrubber clock carries the live, updating time-ago.
+function showReplayBanner(ts) {
   const b = document.getElementById('replay-banner');
-  const m = /session-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(session);
-  b.querySelector('.rb-txt').textContent = m
-    ? `replaying session ${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]}`
-    : 'replaying session';
+  b.querySelector('.rb-txt').textContent = '⧗ replaying · ' + relTime(ts);
+  b.title = 'record set ' + new Date(ts * 1000).toLocaleString();
   b.hidden = false;
 }
 
@@ -1113,7 +1112,7 @@ function updateHud() {
   const t = mode === 'live' ? serverNow : viewTime;
   const utc = t ? hms(t) + 'Z' : '--:--:--';
   document.getElementById('clock').textContent = mode === 'live' ? utc
-    : `${utc} −${dur((tl ? tl.end : serverNow) - viewTime)}`;
+    : `${utc} · ${relTime(viewTime)}`;   // real time-ago, right of the PAST badge
   updateSdr(latest.sdr);
   updateClock(latest.clock);
   updateCoverage(latest.coverage);
