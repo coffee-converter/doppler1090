@@ -5,8 +5,11 @@ address against external data and cached to SQLite in the data dir - instant on
 later runs, and shared across sessions and browser tabs. Sources, in order:
 
   1. adsbdb.com  - free JSON API, no key, good global coverage.
-  2. FAA registry - offline; authoritative for US-registered aircraft, so it
-     covers the private/GA tails the API misses. Opt-in (~73 MB one-time
+  2. hexdb.io    - free JSON API, no key; broader coverage of the international
+     and business-jet registries adsbdb misses, and it carries the ICAO type
+     code (so the aircraft even gets the right map icon).
+  3. FAA registry - offline; authoritative for US-registered aircraft, so it
+     covers the private/GA tails the APIs miss. Opt-in (~73 MB one-time
      download), keyed directly by the Mode S hex.
 
 Lookups run on a background thread so they never block snapshot building: a
@@ -32,6 +35,9 @@ import urllib.request
 import zipfile
 
 ADSBDB = "https://api.adsbdb.com/v0/aircraft/{}"
+# hexdb.io: free ICAO-hex -> aircraft JSON, no key. Wider coverage of non-US /
+# business-jet registries than adsbdb, and returns the ICAO type code.
+HEXDB = "https://hexdb.io/api/v1/aircraft/{}"
 FAA_ZIP = "https://registry.faa.gov/database/ReleasableAircraft.zip"
 # planespotters photo API, keyed by registration; its terms require a UA with a
 # contact URL, and photos link back to the photo page (credit the photographer).
@@ -120,7 +126,8 @@ class TypeStore:
         # queue items: ("type", icao) | ("photo", reg) | ("typephoto", key)
         self._q = queue.Queue()
         self._queued = set()            # in-flight items (avoid duplicates)
-        self._adsb_missed = set()       # tried adsbdb already, awaiting FAA
+        self._adsb_missed = set()       # tried adsbdb already, awaiting fallback
+        self._hexdb_missed = set()      # tried hexdb already, awaiting FAA
         self._source_until = {}         # source -> epoch it's parked until (429/503)
         self._retry_at = {}             # (kind,key) -> earliest retry epoch (backoff)
         self._retry_n = {}              # (kind,key) -> consecutive transient count
@@ -213,6 +220,11 @@ class TypeStore:
             if hit:
                 return hit, "adsbdb"
             self._adsb_missed.add(icao)  # confirmed adsbdb miss
+        if icao not in self._hexdb_missed:
+            hit = self._hexdb(icao)      # may raise on transient error -> retry
+            if hit:
+                return hit, "hexdb"
+            self._hexdb_missed.add(icao)  # confirmed hexdb miss
         if self.use_faa:
             if not self._faa_ready:
                 return None, None        # wait for the registry import
@@ -249,6 +261,17 @@ class TypeStore:
             return {"make": ac.get("manufacturer"), "model": ac.get("type"),
                     "reg": ac.get("registration"), "type": ac.get("icao_type")}
         return None                      # "unknown aircraft"
+
+    def _hexdb(self, icao):
+        j = self._get_json(HEXDB.format(icao.upper()), "hexdb")
+        if not j:
+            return None                  # 404 / genuinely unknown
+        reg, make, model = (j.get("Registration"), j.get("Manufacturer"),
+                            j.get("Type"))
+        if not (reg or make or model):
+            return None                  # empty record -> miss
+        return {"make": make, "model": model, "reg": reg,
+                "type": j.get("ICAOTypeCode")}
 
     def _faa_get(self, icao):
         with self._lock:

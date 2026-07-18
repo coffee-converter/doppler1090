@@ -195,3 +195,35 @@ def test_enqueue_skips_item_during_backoff(tmp_path):
     store._retry_at[item] = time.time() + 100        # backed off after a failure
     store._enqueue(item)
     assert item not in store._queued and store._q.qsize() == 0
+
+
+# ---- hexdb.io fallback ----------------------------------------------------
+
+_HEXDB = {"ModeS": "424724", "Registration": "VP-CCQ",
+          "Manufacturer": "Bombardier", "ICAOTypeCode": "GL7T",
+          "Type": "Global 7500", "RegisteredOwners": "YouJet Management Ltd"}
+
+
+def test_hexdb_parses_record(tmp_path, monkeypatch):
+    _stub_urlopen(monkeypatch, _HEXDB)
+    assert _store(tmp_path)._hexdb("424724") == {
+        "make": "Bombardier", "model": "Global 7500",
+        "reg": "VP-CCQ", "type": "GL7T"}
+
+
+def test_hexdb_miss_returns_none(tmp_path, monkeypatch):
+    def raise404(req, timeout=0):
+        raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)
+    monkeypatch.setattr(aircraft.urllib.request, "urlopen", raise404)
+    assert _store(tmp_path)._hexdb("000001") is None
+
+
+def test_resolve_falls_back_to_hexdb_when_adsbdb_misses(tmp_path, monkeypatch):
+    store = _store(tmp_path)
+    monkeypatch.setattr(store, "_adsbdb", lambda icao: None)   # adsbdb has nothing
+    monkeypatch.setattr(store, "_hexdb", lambda icao: {
+        "make": "Bombardier", "model": "Global 7500",
+        "reg": "VP-CCQ", "type": "GL7T"})
+    info, source = store._resolve("424724")
+    assert source == "hexdb"
+    assert info["reg"] == "VP-CCQ" and info["type"] == "GL7T"
