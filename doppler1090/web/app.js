@@ -751,6 +751,7 @@ function renderMeta(meta, a, ghostSince) {
     const secs = Math.round((Date.now() - ghostSince) / 1000);
     frag.push(el('div', 'stale', `stale · last heard ${secs}s ago`));
   }
+  frag.push(kinStrip(a));                     // live telemetry, up with the name
   if (a.photo) {                                              // ...then the photo
     const fig = el('div', 'photo');
     fig.dataset.full = _safeUrl(a.photo);       // mobile: tap the thumb -> lightbox
@@ -778,28 +779,34 @@ function renderMeta(meta, a, ghostSince) {
   meta.replaceChildren(...frag);
 }
 
-// Tight stats strip below the plot: kinematics (colour-coded to the map palette)
-// on one line, fit diagnostics muted on the next - replaces the big tiles.
-function renderStats(box, a) {
-  const f2 = v => (v == null ? '–' : Number(v).toFixed(2));
-  const chip = (cls, txt, help) => {
-    const s = el('span', 'st' + (cls ? ' ' + cls : ''), txt);
-    if (help && STAT_HELP[help]) s.title = STAT_HELP[help];
-    return s;
-  };
+function _statChip(cls, txt, help) {
+  const s = el('span', 'st' + (cls ? ' ' + cls : ''), txt);
+  if (help && STAT_HELP[help]) s.title = STAT_HELP[help];
+  return s;
+}
+
+// Live telemetry (range/alt/spd/trk), colour-coded to the map palette - shown up
+// with the identity rather than buried below the plot.
+function kinStrip(a) {
   const kin = el('div', 'kin');
   kin.append(
-    chip('rng', a.range_km != null ? (a.range_km / 1.852).toFixed(1) + ' nm' : '–', 'range'),
-    chip('alt', a.alt != null ? 'FL' + String(Math.round(a.alt / 100)).padStart(3, '0') : '–', 'alt'),
-    chip('spd', a.speed_kt != null ? Math.round(a.speed_kt) + ' kt' : '–', 'spd'),
-    chip('trk', a.track != null ? Math.round(a.track) + '°' : '–', 'trk'));
+    _statChip('rng', a.range_km != null ? (a.range_km / 1.852).toFixed(1) + ' nm' : '–', 'range'),
+    _statChip('alt', a.alt != null ? 'FL' + String(Math.round(a.alt / 100)).padStart(3, '0') : '–', 'alt'),
+    _statChip('spd', a.speed_kt != null ? Math.round(a.speed_kt) + ' kt' : '–', 'spd'),
+    _statChip('trk', a.track != null ? Math.round(a.track) + '°' : '–', 'trk'));
+  return kin;
+}
+
+// Fit diagnostics strip below the plot (how good the Doppler measurement is).
+function renderStats(box, a) {
+  const f2 = v => (v == null ? '–' : Number(v).toFixed(2));
   const fit = el('div', 'fit');
   fit.append(
-    chip('', 'corr ' + f2(a.corr), 'corr'),
-    chip('', 'conf ' + f2(a.conf), 'conf'),
-    chip('', a.bursts + ' brst', 'bursts'),
-    chip('', a.rssi != null ? Math.round(a.rssi) + ' dBFS' : '–', 'sig'));
-  box.replaceChildren(kin, fit);
+    _statChip('', 'corr ' + f2(a.corr), 'corr'),
+    _statChip('', 'conf ' + f2(a.conf), 'conf'),
+    _statChip('', a.bursts + ' brst', 'bursts'),
+    _statChip('', a.rssi != null ? Math.round(a.rssi) + ' dBFS' : '–', 'sig'));
+  box.replaceChildren(fit);
 }
 
 // ---- health strip --------------------------------------------------------

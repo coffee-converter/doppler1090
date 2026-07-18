@@ -184,16 +184,18 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #meta .stale { font-size: 12px; color: var(--gold); margin-top: 3px; }
 /* tight stats strip below the plot: kinematics (coloured) then fit (muted) -
    replaces the big metric tiles. */
-#stats { margin-top: 9px; font-family: var(--mono);
-         font-variant-numeric: tabular-nums; }
-#stats .kin, #stats .fit { display: flex; flex-wrap: wrap; gap: 3px 12px; }
-#stats .fit { margin-top: 5px; }
-#stats .st { font-size: 12px; color: var(--ink-dim); white-space: nowrap; }
-#stats .kin .st { font-size: 13px; font-weight: 600; }
-#stats .kin .rng { color: #4cc8ce; }
-#stats .kin .alt { color: #74aef0; }
-#stats .kin .spd { color: #e8ad56; }
-#stats .kin .trk { color: #b399ec; }
+/* live telemetry (.kin, up with the identity) + fit diagnostics (.fit, below the
+   plot). Shared strip styling; kinematics colour-coded to the map palette. */
+.kin, .fit { display: flex; flex-wrap: wrap; gap: 3px 12px;
+             font-family: var(--mono); font-variant-numeric: tabular-nums; }
+#meta .kin { margin: 9px 0 2px; }
+#stats { margin-top: 3px; }
+.kin .st, .fit .st { font-size: 12px; color: var(--ink-dim); white-space: nowrap; }
+.kin .st { font-size: 13px; font-weight: 600; }
+.kin .rng { color: #4cc8ce; }
+.kin .alt { color: #74aef0; }
+.kin .spd { color: #e8ad56; }
+.kin .trk { color: #b399ec; }
 #meta .placeholder { color: var(--ink-dim); font-size: 13px;
                      text-align: center; padding: 22px 4px; }
 
