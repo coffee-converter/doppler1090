@@ -801,7 +801,7 @@ function kinStrip(a) {
   };
   kin.append(
     row('rng', 'range', a.range_km != null ? (a.range_km / 1.852).toFixed(1) + ' nm' : '–', 'range'),
-    row('alt', 'alt', a.alt != null ? 'FL' + String(Math.round(a.alt / 100)).padStart(3, '0') : '–', 'alt'),
+    row('alt', 'alt', a.alt != null ? Math.round(a.alt).toLocaleString() + ' ft' : '–', 'alt'),
     row('spd', 'spd', a.speed_kt != null ? Math.round(a.speed_kt) + ' kt' : '–', 'spd'),
     row('trk', 'trk', a.track != null ? Math.round(a.track) + '°' : '–', 'trk'));
   return kin;
