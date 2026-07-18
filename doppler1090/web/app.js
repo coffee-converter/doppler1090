@@ -368,10 +368,21 @@ function renderList() {
 }
 
 // Sticky column-header row; same grid as the data rows so the labels line up.
+// Short/unit labels (rows carry no units) with a hover tooltip explaining each.
 function listHead() {
   const h = el('div', 'row head');
-  ['flight', 'type', 'Doppler', 'alt', 'range'].forEach(
-    t => h.appendChild(el('span', null, t)));
+  const cols = [
+    ['flight', 'Callsign, or tail number for general aviation'],
+    ['type', 'Aircraft type (ICAO type code, e.g. E75L)'],
+    ['Doppler', 'Measured Doppler trend over the pass - blue approaching, red receding'],
+    ['FL', 'Flight level - altitude in hundreds of feet (FL370 = 37,000 ft)'],
+    ['range', 'Straight-line distance from your receiver, in nautical miles'],
+  ];
+  for (const [t, help] of cols) {
+    const s = el('span', null, t);
+    s.title = help;
+    h.appendChild(s);
+  }
   return h;
 }
 
