@@ -57,7 +57,13 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 /* all-time record: one compact card that fades between records every few
    seconds - value on top (coloured by metric family), the flight/tail/type/time
    that set it below. */
-#hud .record { margin-top: 8px; font-family: var(--mono);
+/* labeled divider above the records ticker: ── all-time records ── */
+#hud .hr-label { display: flex; align-items: center; gap: 8px; margin-top: 10px;
+                 font-size: 9px; text-transform: uppercase; letter-spacing: .7px;
+                 color: var(--ink-dim); }
+#hud .hr-label::before, #hud .hr-label::after {
+  content: ''; flex: 1; height: 1px; background: var(--edge); }
+#hud .record { margin-top: 5px; font-family: var(--mono);
                transition: opacity .2s ease; min-height: 30px; }
 /* one 'cycle' control at the left of the record name: a phosphor-cyan circular
    arrow that steps to the next record (they also auto-rotate). Its fixed left
