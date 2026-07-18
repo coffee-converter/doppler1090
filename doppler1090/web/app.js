@@ -847,7 +847,7 @@ function renderRecord(el, spec, r) {
   el.querySelector('.rec-who').textContent = who || r.icao || '';
 }
 
-// The record shown is stepped manually with the ‹ › arrows (no auto-rotation).
+// The record is advanced by the ⟳ cycle button and by the slow auto-rotate.
 // Show the record at index i with a fade, tracking it as the current one.
 function showRecordAt(i) {
   const el = document.getElementById('h-record');
@@ -869,7 +869,7 @@ function stepRecord(dir) {
 }
 
 // Called on every state update: keep the shown record's value current, and show
-// the first available record once any exist (the arrows do the navigating).
+// the first available record once any exist (cycle button / auto-rotate navigate).
 function refreshRecord() {
   const el = document.getElementById('h-record');
   if (!el) return;
@@ -1152,8 +1152,7 @@ const _recEl = document.getElementById('h-record');
 _recEl?.addEventListener('mouseenter', () => { recordHover = true; });
 _recEl?.addEventListener('mouseleave', () => { recordHover = false; });
 const _holdRecords = () => { recordHold = Date.now() + 30000; };
-document.getElementById('rec-prev')?.addEventListener('click', () => { stepRecord(-1); _holdRecords(); });
-document.getElementById('rec-next')?.addEventListener('click', () => { stepRecord(1); _holdRecords(); });
+document.getElementById('rec-cycle')?.addEventListener('click', () => { stepRecord(1); _holdRecords(); });
 setInterval(() => {
   if (!recordHover && Date.now() >= recordHold && recordIdx >= 0) stepRecord(1);
 }, 12000);

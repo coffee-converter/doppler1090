@@ -42,5 +42,5 @@ def test_records_carousel_has_prev_next_controls():
     # records: slow auto-advance plus manual prev/next stepping
     assert "stepRecord" in js
     assert "recordHover" in js                      # auto-rotate pauses on interaction
-    assert "rec-prev" in html and "rec-next" in html
-    assert ".rec-arrow" in _read("style.css")
+    assert "rec-cycle" in html                      # single cycle control
+    assert ".rec-cycle" in _read("style.css")
