@@ -342,7 +342,7 @@ function makeCard(a, ghost) {
     ? String(Math.round(a.alt / 100)).padStart(3, '0') : '–'));
   const nm = a.range_km ? a.range_km / 1.852 : null;     // km -> nautical miles
   row.append(el('span', 'rng',
-    nm == null ? '–' : (nm >= 10 ? String(Math.round(nm)) : nm.toFixed(1))));
+    nm == null ? '–' : nm.toFixed(2)));
   requestAnimationFrame(() => drawSpark(spark, a));   // draw once the cell has width
   return row;
 }
@@ -800,7 +800,7 @@ function kinStrip(a) {
     return r;
   };
   kin.append(
-    row('rng', 'range', a.range_km != null ? (a.range_km / 1.852).toFixed(1) + ' nm' : '–', 'range'),
+    row('rng', 'range', a.range_km != null ? (a.range_km / 1.852).toFixed(2) + ' nm' : '–', 'range'),
     row('alt', 'alt', a.alt != null ? Math.round(a.alt).toLocaleString() + ' ft' : '–', 'alt'),
     row('spd', 'spd', a.speed_kt != null ? Math.round(a.speed_kt) + ' kt' : '–', 'spd'),
     row('trk', 'trk', a.track != null ? Math.round(a.track) + '°' : '–', 'trk'));
@@ -855,8 +855,8 @@ const RECORD_SPECS = [
   { key: 'alt_min_ft',    label: 'lowest',           unit: ' ft',  d: 0, cls: 'alt' },
   { key: 'vrate_max_fpm', label: 'climb',            unit: ' fpm', d: 0, cls: 'vrt' },
   { key: 'vrate_min_fpm', label: 'descent',          unit: ' fpm', d: 0, cls: 'vrt' },
-  { key: 'range_nm',      label: 'farthest',         unit: ' nm',  d: 0, cls: 'rng' },
-  { key: 'closest_nm',    label: 'nearest',          unit: ' nm',  d: 1, cls: 'rng' },
+  { key: 'range_nm',      label: 'farthest',         unit: ' nm',  d: 2, cls: 'rng' },
+  { key: 'closest_nm',    label: 'nearest',          unit: ' nm',  d: 2, cls: 'rng' },
   { key: 'sig_max_db',    label: 'strongest',        unit: ' dBFS', d: 0, cls: 'sig' },
   { key: 'sig_min_db',    label: 'weakest',          unit: ' dBFS', d: 0, cls: 'sig' },
   { key: 'dop_span_hz',   label: 'widest Δf',        unit: ' Hz',  d: 0, cls: 'dop' },
