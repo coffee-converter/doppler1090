@@ -78,6 +78,22 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #hud .rec-cycle:active { color: var(--ink); }
 /* no click focus-ring (looks clunky on the HUD), but keep it for keyboard users */
 #hud .rec-cycle:focus:not(:focus-visible) { outline: none; }
+/* hourglass is disabled when the shown record's session can't be replayed */
+#hud #rec-replay[disabled] { opacity: .3; cursor: default;
+                             color: var(--accent); text-shadow: none; }
+
+/* record-replay banner: sits above the header while replaying a past session */
+#replay-banner { display: flex; align-items: center; gap: 10px;
+  padding: 5px 11px; font: 11px var(--mono); color: var(--gold);
+  background: rgba(120, 90, 0, .18); border-bottom: 1px solid var(--edge); }
+#replay-banner[hidden] { display: none; }
+#replay-banner .rb-txt { flex: 1; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; }
+#replay-banner #rb-live { font: inherit; color: var(--accent); background: none;
+  border: 1px solid var(--edge); border-radius: 4px; padding: 1px 7px;
+  cursor: pointer; }
+#replay-banner #rb-live:hover { border-color: var(--edge-lit);
+  text-shadow: 0 0 8px var(--accent-dim); }
 /* top row: cycle control, record name, value, then date pushed to the right. */
 #hud .rec-top { display: flex; align-items: center; gap: 6px; }
 #hud .rec-label { font-size: 12px; text-transform: uppercase; letter-spacing: .5px;

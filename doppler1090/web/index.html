@@ -14,6 +14,10 @@
   <!-- Left bar: status header, aircraft list, and (when one is selected) its
        measured-vs-predicted plot + stats. -->
   <aside id="rail">
+    <div id="replay-banner" hidden>
+      <span class="rb-txt">replaying session</span>
+      <button type="button" id="rb-live">return to live</button>
+    </div>
     <header id="hud">
       <span class="brand"></span>
       <div class="statrow">
@@ -30,6 +34,8 @@
         <div class="rec-top">
           <button type="button" id="rec-cycle" class="rec-cycle"
                   title="cycle records" aria-label="cycle through records">⇄</button>
+          <button type="button" id="rec-replay" class="rec-cycle"
+                  title="replay this record" aria-label="replay this record">⧗</button>
           <span class="rec-label">records</span>
           <span class="rec-val">–</span>
           <span class="rec-date"></span>

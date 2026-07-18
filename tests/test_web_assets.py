@@ -54,6 +54,14 @@ def test_selecting_off_screen_plane_reveals_it_on_map():
     assert "pendingFit" in js                       # fresh autoselect reveals too
 
 
+def test_record_replay_controls_present():
+    html = _read("index.html")
+    css = _read("style.css")
+    assert 'id="rec-replay"' in html          # hourglass on the records ticker
+    assert 'id="replay-banner"' in html        # "replaying session … / return to live"
+    assert "#replay-banner" in css
+
+
 def test_left_pane_structure():
     js = _read("app.js")
     html = _read("index.html")
