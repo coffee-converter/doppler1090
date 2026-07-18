@@ -210,9 +210,9 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #meta .kin .trk .v { color: #b399ec; }
 /* fit diagnostics: inline chips below the plot */
 #stats { margin-top: 4px; }
-.fit { display: flex; flex-wrap: wrap; gap: 3px 12px;
+.fit { display: flex; flex-wrap: nowrap; gap: 9px;
        font-family: var(--mono); font-variant-numeric: tabular-nums; }
-.fit .st { font-size: 12px; color: var(--ink-dim); white-space: nowrap; }
+.fit .st { font-size: 11px; color: var(--ink-dim); white-space: nowrap; }
 #meta .placeholder { color: var(--ink-dim); font-size: 13px;
                      text-align: center; padding: 22px 4px; }
 
