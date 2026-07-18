@@ -199,3 +199,14 @@ def test_session_resolver_maps_ts_to_session(tmp_path):
         assert miss["session"] is None
     finally:
         httpd.shutdown()
+
+
+def test_timeline_for_a_named_session_is_bounded(tmp_path):
+    httpd, base, name = _serve_dir(tmp_path)
+    try:
+        tl = _get(base, f"/api/timeline?session={name}")
+        assert tl["t_start"] == 1000.0 and tl["t_end"] == 1005.0
+        assert tl["recording"] is True
+        assert sum(tl["buckets"]) >= 2   # bursts logged in the session
+    finally:
+        httpd.shutdown()

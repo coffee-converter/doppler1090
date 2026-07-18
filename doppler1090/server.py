@@ -185,7 +185,7 @@ def _make_handler(store, rx_llh, lock, min_conf, history, type_store, health,
             if route.path == "/api/state":
                 self._state(parse_qs(route.query))
             elif route.path == "/api/timeline":
-                self._timeline()
+                self._timeline(parse_qs(route.query))
             elif route.path == "/api/session":
                 self._session(parse_qs(route.query))
             else:
@@ -234,8 +234,18 @@ def _make_handler(store, rx_llh, lock, min_conf, history, type_store, health,
                                                      clockcal=clockcal)).encode()
             self._send(200, "application/json", body)
 
-        def _timeline(self):
-            if history is None:
+        def _timeline(self, query=None):
+            sess = (query or {}).get("session", [None])[0]
+            hist = _history_for(sess) if sess else None
+            if hist is not None:
+                # A record-replay session: bounded strip anchored at its own end.
+                # No `replay` marker - the client drives pause-at-end via its
+                # viewSession flag, so it must not auto-play/loop from the start.
+                lo, hi = hist.bounds()
+                data = hist.timeline(now=hi)
+                data["recording"] = True
+                data["t_start"], data["t_end"] = lo, hi
+            elif history is None:
                 data = {"start": None, "end": None, "buckets": [],
                         "recording": False}
             elif replay is not None:
