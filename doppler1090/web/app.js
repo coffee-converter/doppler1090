@@ -37,6 +37,7 @@ centerOnVisible(41.978, -87.904, 10);   // O'Hare placeholder; recenters on rece
 // current selection. Kept in sync with --rx / --rx-dim in style.css.
 const RX_COLOR = '#48dda0';        // receiver / rings / coverage stroke + fill
 const RX_LABEL = '#c3ecd8';        // ring-label text (a lighter tint)
+const HOME_ZOOM = 10;              // the standard receiver-centred view zoom
 const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
   { maxZoom: 19, detectRetina: true, attribution: '© OpenStreetMap' });
 const faaChart = name => L.tileLayer(
@@ -1219,6 +1220,10 @@ function goLive() {
   document.getElementById('console').classList.remove('past');
   updateTransport(); positionPlayhead();
   fetchState(null);
+  if (receiverMarker) {                        // reset to the standard home view
+    const p = receiverMarker.getLatLng();
+    centerOnVisible(p.lat, p.lng, HOME_ZOOM);
+  }
 }
 // Replay: auto-play the recorded session from the start and loop forever. There
 // is no true "live" frame, so the playhead just sweeps [t_start, t_end].
