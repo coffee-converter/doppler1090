@@ -23,6 +23,8 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #map { position: fixed; inset: 0; background: var(--bg); }
 .leaflet-top.leaflet-right { margin-top: 8px; }
 .plane-icon, .ring-label { background: none; border: none; }
+/* the receiver dot is clickable (recentres) but shouldn't show a focus ring */
+.rx-dot { outline: none; }
 .stat, .badge, #clock, #meta .stat .v { font-variant-numeric: tabular-nums; }
 
 /* ---- top-left health strip -------------------------------------------- */

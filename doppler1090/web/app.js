@@ -179,8 +179,12 @@ function render(state) {
   if (mode === 'live') hadAircraft = state.aircraft.length > 0;
   if (!receiverMarker && state.receiver && state.receiver.lat != null) {
     receiverMarker = L.circleMarker([state.receiver.lat, state.receiver.lon],
-      { radius: 7, color: '#000', weight: 2, fillColor: '#4be3e9', fillOpacity: 1 })
-      .addTo(map).bindTooltip('receiver');
+      { radius: 7, color: '#000', weight: 2, fillColor: '#4be3e9', fillOpacity: 1,
+        className: 'rx-dot' })
+      .addTo(map).bindTooltip('receiver')
+      // clicking the receiver recentres the map on it (kept clear of the panel)
+      .on('click', () => { const p = receiverMarker.getLatLng();
+                           centerOnVisible(p.lat, p.lng); });
     centerOnVisible(state.receiver.lat, state.receiver.lon);  // visible-area centre
     drawRangeRings(state.receiver);
   }
