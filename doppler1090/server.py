@@ -194,17 +194,21 @@ def _make_handler(store, rx_llh, lock, min_conf, history, type_store, health,
         def _session(self, query):
             # Resolve a record's epoch to the recorded session file that covers
             # it (for the records-ticker replay hourglass), plus that session's
-            # scrub bounds. No data_dir / no match -> {"session": null}.
+            # scrub bounds. Any failure - no data_dir, bad ts, no match, or the
+            # file vanishing under us - answers {"session": null}, never a 500.
             at = query.get("at", [None])[0]
-            if at is None or data_dir is None:
-                self._send(200, "application/json", b'{"session": null}')
-                return
-            name = find_session(data_dir, float(at), max_age)
-            body = {"session": name}
-            if name:
-                lo, hi = _history_for(name).bounds()
-                body["t_start"], body["t_end"] = lo, hi
-            self._send(200, "application/json", json.dumps(body).encode())
+            if at is not None and data_dir is not None:
+                try:
+                    name = find_session(data_dir, float(at), max_age)
+                    hist = _history_for(name) if name else None
+                    if hist is not None:
+                        lo, hi = hist.bounds()
+                        self._send(200, "application/json", json.dumps(
+                            {"session": name, "t_start": lo, "t_end": hi}).encode())
+                        return
+                except (TypeError, ValueError):
+                    pass
+            self._send(200, "application/json", b'{"session": null}')
 
         def _state(self, query):
             at = query.get("at", [None])[0]
