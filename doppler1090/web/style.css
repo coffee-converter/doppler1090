@@ -138,8 +138,8 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
   border-left: 3px solid var(--edge-lit); border-radius: 5px; cursor: pointer;
 }
 #list .row:hover { border-color: var(--edge-lit); background: #131b25; }
-#list .row.sel { border-color: var(--accent); border-left-color: var(--accent);
-                 background: rgba(53,208,214,.08); }
+#list .row.sel { border-color: var(--gold); border-left-color: var(--gold);
+                 background: rgba(255,212,0,.09); }   /* matches the gold map icon */
 #list .row.ghost { opacity: .45; }
 #list .row.ghost.sel { opacity: 1; }
 #list .cs { font-weight: 600; font-size: 12px; letter-spacing: .3px;
