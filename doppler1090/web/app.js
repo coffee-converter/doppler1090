@@ -1193,6 +1193,11 @@ function goLive() {
   if (viewSession) {           // leaving a record replay: drop the session override
     viewSession = null;
     document.getElementById('replay-banner').hidden = true;
+    // the selected plane and every marker belong to that past session - clear
+    // them so the live frame starts clean (fetchState below repopulates live).
+    selected = null;
+    document.getElementById('rail').classList.remove('selected');
+    for (const icao of Object.keys(layers)) removeEntry(icao);
     pollTimeline();            // restore the home (live / launch-replay) strip
   }
   if (isReplay) {              // no live frame in replay: resume the looping sweep
