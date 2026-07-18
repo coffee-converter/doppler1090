@@ -857,8 +857,8 @@ const RECORD_SPECS = [
   { key: 'vrate_min_fpm', label: 'descent',          unit: ' fpm', d: 0, cls: 'vrt' },
   { key: 'range_nm',      label: 'farthest',         unit: ' nm',  d: 2, cls: 'rng' },
   { key: 'closest_nm',    label: 'nearest',          unit: ' nm',  d: 2, cls: 'rng' },
-  { key: 'sig_max_db',    label: 'strongest',        unit: ' dBFS', d: 0, cls: 'sig' },
-  { key: 'sig_min_db',    label: 'weakest',          unit: ' dBFS', d: 0, cls: 'sig' },
+  { key: 'sig_max_db',    label: 'strongest',        unit: ' dBFS', d: 1, cls: 'sig' },
+  { key: 'sig_min_db',    label: 'weakest',          unit: ' dBFS', d: 1, cls: 'sig' },
   { key: 'dop_span_hz',   label: 'widest Δf',        unit: ' Hz',  d: 0, cls: 'dop' },
 ];
 let recordIdx = -1;   // index of the record currently shown; -1 = none yet
