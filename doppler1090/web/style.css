@@ -34,6 +34,9 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #hud .statrow { display: flex; flex-wrap: wrap; gap: 3px 12px; margin-top: 6px;
                 font-size: 11px; letter-spacing: .3px; }
 #hud .stat { font-family: var(--mono); color: var(--ink-dim); }
+/* reserve the receiver-coord width so the "--" placeholder -> real coords swap
+   can't toggle the flex-wrap row height (a momentary layout shift on load). */
+#hud #h-rx { min-width: 14ch; }
 #hud #h-clock.stale { opacity: .72; }   /* last estimate held while <2 aircraft */
 #hud .stat .u { margin-left: 3px; font-size: 10px; }
 /* SDR status light: colour flows from the state class onto both the dot (via
@@ -66,6 +69,8 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
                   transition: color .12s, text-shadow .12s; }
 #hud .rec-cycle:hover { color: #7ff0f4; text-shadow: 0 0 8px var(--accent-dim); }
 #hud .rec-cycle:active { color: var(--ink); }
+/* no click focus-ring (looks clunky on the HUD), but keep it for keyboard users */
+#hud .rec-cycle:focus:not(:focus-visible) { outline: none; }
 /* top row: cycle control, record name, value, then date pushed to the right. */
 #hud .rec-top { display: flex; align-items: center; gap: 6px; }
 #hud .rec-label { font-size: 12px; text-transform: uppercase; letter-spacing: .5px;
