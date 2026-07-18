@@ -1152,19 +1152,32 @@ document.getElementById('list').addEventListener('pointerdown', e => {
 document.getElementById('sheet-close').addEventListener('click', () => {
   if (selected) select(selected);
 });
-// mobile: swipe the drawer down (from the top of its scroll) to dismiss it
+// mobile: swipe the drawer down to dismiss it - the sheet follows the finger and
+// then snaps closed (past a threshold) or springs back, using the CSS transform
+// + transition already on #detail (no library, no scroll-snap gymnastics).
 (() => {
   const sheet = document.getElementById('detail');
-  let y0 = null, atTop = false;
+  let y0 = null, atTop = false, dragging = false;
   sheet.addEventListener('touchstart', e => {
     if (window.innerWidth > 760) { y0 = null; return; }
-    y0 = e.touches[0].clientY; atTop = sheet.scrollTop <= 0;
+    y0 = e.touches[0].clientY; atTop = sheet.scrollTop <= 0; dragging = false;
+  }, { passive: true });
+  sheet.addEventListener('touchmove', e => {
+    if (y0 == null || !atTop) return;
+    const dy = e.touches[0].clientY - y0;
+    if (dy > 0) {                          // dragging down from the top -> follow
+      dragging = true;
+      sheet.style.transition = 'none';
+      sheet.style.transform = `translateY(${dy}px)`;
+    }
   }, { passive: true });
   sheet.addEventListener('touchend', e => {
     if (y0 == null) return;
     const dy = e.changedTouches[0].clientY - y0;
-    if (atTop && dy > 70 && selected) select(selected);   // swipe down from top -> close
-    y0 = null;
+    sheet.style.transition = '';           // restore CSS transition for the snap
+    sheet.style.transform = '';            // hand back to CSS (translateY 0, or 100% on close)
+    if (dragging && dy > 90 && selected) select(selected);   // far enough -> close
+    y0 = null; dragging = false;
   }, { passive: true });
 })();
 
