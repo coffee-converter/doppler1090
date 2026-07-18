@@ -9,7 +9,7 @@
 // Zoom locked to the range the FAA sectional cache actually covers (native
 // tiles exist z8-z12; outside that the service 404s). Max 11 because
 // detectRetina pulls one level deeper, so map-zoom 11 already shows z12 tiles.
-const map = L.map('map', { minZoom: 7, maxZoom: 11, zoomControl: false });
+const map = L.map('map', { minZoom: 7, maxZoom: 12, zoomControl: false });
 // Zoom control on the right, by the layer picker — clear of the health strip.
 L.control.zoom({ position: 'topright' }).addTo(map);
 // Center a point in the *visible* map area — clear of the left panel (~320 px)
