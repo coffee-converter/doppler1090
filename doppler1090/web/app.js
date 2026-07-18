@@ -751,10 +751,11 @@ function renderMeta(meta, a, ghostSince) {
     const secs = Math.round((Date.now() - ghostSince) / 1000);
     frag.push(el('div', 'stale', `stale · last heard ${secs}s ago`));
   }
-  frag.push(kinStrip(a));                     // live telemetry, up with the name
-  if (a.photo) {                                              // ...then the photo
+  // media row: the photo thumbnail (if any) sits beside the live telemetry
+  const media = el('div', 'media');
+  if (a.photo) {
     const fig = el('div', 'photo');
-    fig.dataset.full = _safeUrl(a.photo);       // mobile: tap the thumb -> lightbox
+    fig.dataset.full = _safeUrl(a.photo);       // tap the thumb -> lightbox
     fig.dataset.link = _safeUrl(a.photo_link);
     fig.dataset.by = a.photo_by || '';
     const img = document.createElement('img');
@@ -774,8 +775,10 @@ function renderMeta(meta, a, ghostSince) {
       }
       fig.append(cr);
     }
-    frag.push(fig);
+    media.append(fig);
   }
+  media.append(kinStrip(a));                    // telemetry beside the thumbnail
+  frag.push(media);
   meta.replaceChildren(...frag);
 }
 
@@ -785,15 +788,22 @@ function _statChip(cls, txt, help) {
   return s;
 }
 
-// Live telemetry (range/alt/spd/trk), colour-coded to the map palette - shown up
-// with the identity rather than buried below the plot.
+// Live telemetry (range/alt/spd/trk) as a compact label/value list beside the
+// photo thumbnail - colour-coded to the map palette, shown up with the identity.
 function kinStrip(a) {
   const kin = el('div', 'kin');
+  const row = (cls, k, v, help) => {
+    const r = el('div', 'krow ' + cls);
+    const kk = el('span', 'k', k);
+    if (STAT_HELP[help]) kk.title = STAT_HELP[help];
+    r.append(kk, el('span', 'v', v));
+    return r;
+  };
   kin.append(
-    _statChip('rng', a.range_km != null ? (a.range_km / 1.852).toFixed(1) + ' nm' : '–', 'range'),
-    _statChip('alt', a.alt != null ? 'FL' + String(Math.round(a.alt / 100)).padStart(3, '0') : '–', 'alt'),
-    _statChip('spd', a.speed_kt != null ? Math.round(a.speed_kt) + ' kt' : '–', 'spd'),
-    _statChip('trk', a.track != null ? Math.round(a.track) + '°' : '–', 'trk'));
+    row('rng', 'range', a.range_km != null ? (a.range_km / 1.852).toFixed(1) + ' nm' : '–', 'range'),
+    row('alt', 'alt', a.alt != null ? 'FL' + String(Math.round(a.alt / 100)).padStart(3, '0') : '–', 'alt'),
+    row('spd', 'spd', a.speed_kt != null ? Math.round(a.speed_kt) + ' kt' : '–', 'spd'),
+    row('trk', 'trk', a.track != null ? Math.round(a.track) + '°' : '–', 'trk'));
   return kin;
 }
 
@@ -1179,7 +1189,7 @@ function closeLightbox() {
 }
 document.getElementById('detail').addEventListener('click', e => {
   const img = e.target.closest('.photo img');
-  if (img && window.innerWidth <= 760) {          // desktop shows it full-size inline
+  if (img) {
     const fig = img.closest('.photo');
     openLightbox(fig.dataset.full, fig.dataset.link, fig.dataset.by);
   }

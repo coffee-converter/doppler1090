@@ -172,9 +172,12 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #plot { width: 100%; height: 185px; background: transparent; }
 /* larger inline photo of the tail (source thumbnails aren't big, so show it at
    full panel width rather than behind a click), then callsign + type · reg. */
-#meta .photo { margin: 8px 0 9px; }
-#meta .photo img { display: block; width: 100%; height: auto; border-radius: 6px; }
-#meta .credit { font-size: 9px; color: #57626f; margin-top: 3px; text-align: right; }
+/* media row: photo thumbnail beside the telemetry list - no wasted space */
+#meta .media { display: flex; gap: 12px; align-items: stretch; margin: 9px 0 3px; }
+#meta .photo { flex: 0 0 auto; margin: 0; }
+#meta .photo img { display: block; width: 132px; height: 92px; object-fit: cover;
+                   border-radius: 6px; cursor: zoom-in; }
+#meta .credit { font-size: 9px; color: #57626f; margin-top: 3px; }
 #meta .credit a { color: inherit; text-decoration: none; }
 #meta .credit a:hover { color: var(--accent); }
 #meta .callsign { font-size: 17px; font-weight: 600; letter-spacing: .4px;
@@ -184,18 +187,24 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #meta .stale { font-size: 12px; color: var(--gold); margin-top: 3px; }
 /* tight stats strip below the plot: kinematics (coloured) then fit (muted) -
    replaces the big metric tiles. */
-/* live telemetry (.kin, up with the identity) + fit diagnostics (.fit, below the
-   plot). Shared strip styling; kinematics colour-coded to the map palette. */
-.kin, .fit { display: flex; flex-wrap: wrap; gap: 3px 12px;
-             font-family: var(--mono); font-variant-numeric: tabular-nums; }
-#meta .kin { margin: 9px 0 2px; }
-#stats { margin-top: 3px; }
-.kin .st, .fit .st { font-size: 12px; color: var(--ink-dim); white-space: nowrap; }
-.kin .st { font-size: 13px; font-weight: 600; }
-.kin .rng { color: #4cc8ce; }
-.kin .alt { color: #74aef0; }
-.kin .spd { color: #e8ad56; }
-.kin .trk { color: #b399ec; }
+/* telemetry: a label/value list beside the thumbnail (colour-coded values) */
+#meta .kin { flex: 1 1 auto; min-width: 0; display: grid; align-content: center;
+             gap: 3px 0; font-family: var(--mono); }
+#meta .kin .krow { display: flex; justify-content: space-between;
+                   align-items: baseline; gap: 10px; }
+#meta .kin .k { font-size: 10px; text-transform: uppercase; letter-spacing: .4px;
+                color: var(--ink-dim); }
+#meta .kin .v { font-size: 13px; font-weight: 600; white-space: nowrap;
+                font-variant-numeric: tabular-nums; }
+#meta .kin .rng .v { color: #4cc8ce; }
+#meta .kin .alt .v { color: #74aef0; }
+#meta .kin .spd .v { color: #e8ad56; }
+#meta .kin .trk .v { color: #b399ec; }
+/* fit diagnostics: inline chips below the plot */
+#stats { margin-top: 4px; }
+.fit { display: flex; flex-wrap: wrap; gap: 3px 12px;
+       font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.fit .st { font-size: 12px; color: var(--ink-dim); white-space: nowrap; }
 #meta .placeholder { color: var(--ink-dim); font-size: 13px;
                      text-align: center; padding: 22px 4px; }
 
@@ -276,10 +285,6 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
     content: ''; display: block; width: 34px; height: 4px; margin: 0 auto 6px;
     background: var(--edge-lit); border-radius: 2px;
   }
-  /* photo shrinks to a tappable thumbnail (tap = lightbox); a full-width photo
-     would eat too much of the drawer. Desktop keeps the large inline photo. */
-  #meta .photo img { width: 120px; height: 84px; object-fit: cover; cursor: zoom-in; }
-  #meta .credit { text-align: left; }
 
   #console { left: 8px; right: 8px; bottom: 8px; }
   #transport { flex-wrap: wrap; gap: 8px 6px; }
