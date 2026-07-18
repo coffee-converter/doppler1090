@@ -1119,8 +1119,9 @@ function updateHud() {
   const r = latest.receiver || {};
   document.getElementById('h-rx').textContent =
     (r.lat != null) ? `${r.lat.toFixed(2)}, ${r.lon.toFixed(2)}` : '--';
-  document.getElementById('h-count').innerHTML =
-    `${latest.aircraft.length}<span class="u">ac</span>`;
+  const cEl = document.getElementById('h-count');
+  cEl.innerHTML = `${latest.aircraft.length}<span class="u">ac</span>`;
+  cEl.classList.toggle('active', latest.aircraft.length > 0);   // gold while tracking
   // clock lives in the bottom scrubber bar: absolute UTC of the current frame,
   // plus how far behind live when scrubbing.
   const t = mode === 'live' ? serverNow : viewTime;
