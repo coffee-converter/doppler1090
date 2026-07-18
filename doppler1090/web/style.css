@@ -236,21 +236,27 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
   #hud { font-size: 11px; gap: 4px 10px; }
   #plot { height: 188px; }
 
-  /* the detail becomes a dismissable bottom sheet: parked below, slides up when a
-     plane is selected; the ▾ handle (or picking another plane) dismisses it. */
+  /* the detail becomes a sheet that fills the panel and scrolls, sliding up over
+     the list when a plane is selected; the ▾ handle (or picking another plane)
+     dismisses it. Positioned ABSOLUTE within #rail (not fixed) - #rail's
+     backdrop-filter makes it the containing block and its overflow:hidden would
+     otherwise clip a fixed sheet's top (the handle/identity/photo). */
   #detail {
-    position: fixed; left: 8px; right: 8px; bottom: 104px; z-index: 1500;
-    min-height: 0; max-height: 74vh; overflow-y: auto;
-    border: 1px solid var(--edge-lit); border-radius: 12px;
-    box-shadow: 0 -10px 34px rgba(0,0,0,.55);
-    transform: translateY(130%); transition: transform .22s ease;
+    position: absolute; inset: 0; z-index: 5;
+    min-height: 0; overflow-y: auto; border: none; border-radius: 0;
+    transform: translateY(100%); transition: transform .2s ease;
   }
   #rail.selected #detail { transform: translateY(0); }
   #sheet-close {
     display: block; position: sticky; top: 0; z-index: 1;
-    width: 100%; padding: 2px 0 7px; text-align: center;
-    background: #090d12; border: none; color: var(--ink-dim);
-    font-size: 18px; line-height: 1; cursor: pointer;
+    width: 100%; padding: 6px 0 8px; text-align: center; cursor: pointer;
+    background: #0b1017; border: none; border-bottom: 1px solid var(--edge);
+    color: var(--ink-dim); font-size: 10px; letter-spacing: .5px;
+    text-transform: uppercase; line-height: 1;
+  }
+  #sheet-close::before {   /* grabber pill, so it reads as a dismissable sheet */
+    content: ''; display: block; width: 34px; height: 4px; margin: 0 auto 6px;
+    background: var(--edge-lit); border-radius: 2px;
   }
 
   #console { left: 8px; right: 8px; bottom: 8px; }
