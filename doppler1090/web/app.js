@@ -31,6 +31,12 @@ function centerOnVisible(lat, lon, zoom) {
   map.setView(map.unproject(p.subtract([dx, dy]), z), z);
 }
 centerOnVisible(41.978, -87.904, 10);   // O'Hare placeholder; recenters on receiver
+// Receiver-domain colour: the receiver dot, range rings, and coverage overlay
+// (plus the lat/lon readout in the header) share one phosphor green, distinct
+// from the cyan reserved for clickable chrome and the gold reserved for the
+// current selection. Kept in sync with --rx / --rx-dim in style.css.
+const RX_COLOR = '#48dda0';        // receiver / rings / coverage stroke + fill
+const RX_LABEL = '#c3ecd8';        // ring-label text (a lighter tint)
 const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
   { maxZoom: 19, detectRetina: true, attribution: '© OpenStreetMap' });
 const faaChart = name => L.tileLayer(
@@ -179,7 +185,7 @@ function render(state) {
   if (mode === 'live') hadAircraft = state.aircraft.length > 0;
   if (!receiverMarker && state.receiver && state.receiver.lat != null) {
     receiverMarker = L.circleMarker([state.receiver.lat, state.receiver.lon],
-      { radius: 7, color: '#000', weight: 2, fillColor: '#4be3e9', fillOpacity: 1,
+      { radius: 7, color: '#000', weight: 2, fillColor: RX_COLOR, fillOpacity: 1,
         className: 'rx-dot' })
       .addTo(map).bindTooltip('receiver')
       // clicking the receiver recentres the map on it (kept clear of the panel)
@@ -281,13 +287,13 @@ function drawRangeRings(rx) {
   for (const nm of [5, 10, 25, 50, 75, 100, 150, 200, 250]) {
     const r = nm * NM_TO_M;
     L.circle([rx.lat, rx.lon], { radius: r, fill: false,
-      color: '#4be3e9', weight: 1.4, opacity: 0.6, dashArray: '6 6',
+      color: RX_COLOR, weight: 1.4, opacity: 0.6, dashArray: '6 6',
       interactive: false }).addTo(map);
     L.marker([rx.lat + r / 111320, rx.lon], {
       interactive: false,
       icon: L.divIcon({ className: 'ring-label',
         html: `<span style="display:block;width:48px;text-align:center;` +
-              `color:#bfeef1;opacity:.9;font:9px ui-monospace,monospace;` +
+              `color:${RX_LABEL};opacity:.9;font:9px ui-monospace,monospace;` +
               `text-shadow:0 0 3px #000,0 0 2px #000">${nm} nm</span>`,
         iconSize: [48, 11], iconAnchor: [24, 6] }),
     }).addTo(map);
@@ -1077,8 +1083,8 @@ function updateCoverage(cov) {
   const pts = cov.sectors.map((r, i) =>
     destPoint(rx.lat, rx.lng, i * step + step / 2, r || 0));   // r=0 pulls to centre
   if (coveragePoly) coverageLayer.removeLayer(coveragePoly);
-  coveragePoly = L.polygon(pts, { color: '#4be3e9', weight: 1.5, opacity: 0.75,
-    fillColor: '#4be3e9', fillOpacity: 0.08, lineJoin: 'round', interactive: false });
+  coveragePoly = L.polygon(pts, { color: RX_COLOR, weight: 1.5, opacity: 0.75,
+    fillColor: RX_COLOR, fillOpacity: 0.08, lineJoin: 'round', interactive: false });
   coverageLayer.addLayer(coveragePoly);
 }
 
