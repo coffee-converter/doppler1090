@@ -55,18 +55,19 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
    that set it below. */
 #hud .record { margin-top: 8px; font-family: var(--mono);
                transition: opacity .2s ease; min-height: 30px; }
-/* ‹ › record steppers flanking the name - bare phosphor-cyan action glyphs (the
-   dashboard's interactive accent), large and bold so they read as tappable at a
-   glance. Padding gives a touch target without looking like a button. */
-#hud .rec-arrow { font-family: var(--mono); font-size: 19px; font-weight: 700;
+/* ‹ name › step group: the chevrons hug the label as one unit, and the whole
+   row centre-aligns so the different type sizes sit on one clean line. The
+   chevrons are bare phosphor-cyan action glyphs (the interactive accent) - a
+   touch bolder/larger than the value, so colour (not bulk) makes them stand out. */
+#hud .rec-nav { display: inline-flex; align-items: center; gap: 3px; }
+#hud .rec-arrow { font-family: var(--mono); font-size: 14px; font-weight: 700;
                   line-height: 1; background: none; border: none;
-                  padding: 2px 7px; margin: 0; color: var(--accent);
-                  cursor: pointer; align-self: center;
-                  transition: color .12s, text-shadow .12s; }
+                  padding: 2px 4px; margin: 0; color: var(--accent);
+                  cursor: pointer; transition: color .12s, text-shadow .12s; }
 #hud .rec-arrow:hover { color: #7ff0f4; text-shadow: 0 0 8px var(--accent-dim); }
 #hud .rec-arrow:active { color: var(--ink); }
-/* top row: ‹ name › then value, with the date pushed to the right. */
-#hud .rec-top { display: flex; align-items: baseline; gap: 6px; }
+/* top row: the ‹ name › group, then value, with the date pushed to the right. */
+#hud .rec-top { display: flex; align-items: center; gap: 8px; }
 #hud .rec-label { font-size: 10px; text-transform: uppercase; letter-spacing: .5px;
                   font-weight: 600; color: #c3cdd8; }
 #hud .rec-val { font-weight: 700; font-size: 13px; white-space: nowrap;
