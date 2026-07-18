@@ -259,7 +259,7 @@ def _replay_web(args, history, rx_llh, min_conf, ppm, t_start, t_end, speed):
     server.serve(store, rx_llh, store.lock, min_conf, args.port,
                  open_browser=True, history=history, type_store=type_store,
                  health=None, records=records, coverage=coverage,
-                 clockcal=clockcal,
+                 clockcal=clockcal, data_dir=args.data_dir, max_age=args.max_age,
                  replay={"t_start": t_start, "t_end": t_end, "speed": speed})
 
 
@@ -326,7 +326,8 @@ def main(argv=None):
         server.serve(store, rx_llh, store.lock, min_conf, args.port,
                      open_browser=True, history=history, type_store=type_store,
                      health=health, records=records, coverage=coverage,
-                     clockcal=clockcal)
+                     clockcal=clockcal, data_dir=args.data_dir,
+                     max_age=args.max_age)
         return
 
     # rich.Live with screen=True paints into the alternate screen buffer (like

@@ -9,6 +9,7 @@ import numpy as np
 from .geometry import geodetic_to_ecef, FT_TO_M
 from .terminal import confidence
 from .clockcal import clock_estimate
+from .history import valid_session_name, find_session, History
 
 
 class Health:
@@ -156,7 +157,25 @@ _CTYPES = {"html": "text/html", "js": "application/javascript",
 
 
 def _make_handler(store, rx_llh, lock, min_conf, history, type_store, health,
-                  records, coverage, clockcal, replay=None):
+                  records, coverage, clockcal, replay=None, data_dir=None,
+                  max_age=60):
+    _sessions = {}   # basename -> read-only History (cached across requests)
+
+    def _history_for(session):
+        """Validated, cached read-only History for a session basename, or None.
+        The name is checked against the strict session pattern (no path
+        traversal) and must exist inside data_dir."""
+        if not (data_dir and valid_session_name(session)):
+            return None
+        path = os.path.join(data_dir, session)
+        if not os.path.exists(path):
+            return None
+        h = _sessions.get(session)
+        if h is None:
+            h = History(path, max_age=max_age)
+            _sessions[session] = h
+        return h
+
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *args):
             pass  # silence per-request logging
@@ -172,14 +191,18 @@ def _make_handler(store, rx_llh, lock, min_conf, history, type_store, health,
 
         def _state(self, query):
             at = query.get("at", [None])[0]
+            # An explicit session (record replay) reconstructs from that file;
+            # otherwise fall back to the launch history (live/scrub or replay).
+            sess = query.get("session", [None])[0]
+            hist = _history_for(sess) if sess else history
             # Replay has no live store; a bare request maps to the final frame.
             if at is None and replay is not None:
                 at = replay["t_end"]
             # A past frame is reconstructed off-lock from the recorded file;
             # only the live frame touches the shared store.
-            if at is not None and history is not None:
+            if at is not None and hist is not None:
                 at = float(at)
-                past = history.reconstruct(at)
+                past = hist.reconstruct(at)
                 body = json.dumps(build_snapshot(past, rx_llh, min_conf, at=at,
                                                  type_store=type_store,
                                                  health=health, records=records,
@@ -236,20 +259,21 @@ def _make_handler(store, rx_llh, lock, min_conf, history, type_store, health,
 
 def make_server(store, rx_llh, lock, min_conf, port=0, history=None,
                 type_store=None, health=None, records=None, coverage=None,
-                clockcal=None, replay=None):
+                clockcal=None, replay=None, data_dir=None, max_age=60):
     return ThreadingHTTPServer(("127.0.0.1", port),
                                _make_handler(store, rx_llh, lock, min_conf,
                                              history, type_store, health,
                                              records, coverage, clockcal,
-                                             replay))
+                                             replay, data_dir, max_age))
 
 
 def serve(store, rx_llh, lock, min_conf, port, open_browser=False, history=None,
           type_store=None, health=None, records=None, coverage=None,
-          clockcal=None, replay=None):
+          clockcal=None, replay=None, data_dir=None, max_age=60):
     httpd = make_server(store, rx_llh, lock, min_conf, port, history=history,
                         type_store=type_store, health=health, records=records,
-                        coverage=coverage, clockcal=clockcal, replay=replay)
+                        coverage=coverage, clockcal=clockcal, replay=replay,
+                        data_dir=data_dir, max_age=max_age)
     actual = httpd.server_address[1]
     if open_browser:
         import webbrowser

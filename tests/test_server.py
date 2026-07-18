@@ -140,3 +140,50 @@ def test_replay_server_timeline_and_state():
         assert len(snap["aircraft"]) > 0
     finally:
         httpd.shutdown()
+
+
+# ---- same-window replay of an arbitrary past session --------------------------
+
+def _serve_dir(tmp_path):
+    """A server over a data_dir holding one recorded session.
+    Returns (httpd, base_url, session_name)."""
+    from doppler1090.history import Recorder
+    name = "session-20260101-000000.sqlite"
+    rec = Recorder(str(tmp_path / name), (40.0, -75.0, 100.0),
+                   started_at=1000.0, ppm=0)
+    rec.log_state(1000.0, "abc123", lat=40.1, lon=-75.1, alt=10000,
+                  speed_kt=400, track=90, vrate_fpm=0, flight="TEST1")
+    for t in range(1000, 1006):   # a burst per second -> enough to reconstruct
+        rec.log_burst(float(t), "abc123", 50.0, 45.0, 40.1, -75.1, 90, signal=-10.0)
+    rec.flush()
+    rec.close()
+    store = TrackStore(max_age=60)
+    httpd = make_server(store, (40.0, -75.0, 100.0), store.lock, 0.0, port=0,
+                        data_dir=str(tmp_path), max_age=60)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    return httpd, f"http://127.0.0.1:{httpd.server_address[1]}", name
+
+
+def _get(base, path):
+    with urllib.request.urlopen(base + path) as r:
+        return json.load(r)
+
+
+def test_state_reconstructs_from_a_named_session(tmp_path):
+    httpd, base, name = _serve_dir(tmp_path)
+    try:
+        snap = _get(base, f"/api/state?session={name}&at=1005")
+        assert any(a["icao"] == "abc123" for a in snap["aircraft"])
+    finally:
+        httpd.shutdown()
+
+
+def test_state_rejects_bad_session_name(tmp_path):
+    httpd, base, name = _serve_dir(tmp_path)
+    try:
+        # a traversal / non-session name resolves to no history, so the request
+        # falls back to the (empty) live store rather than reading a stray file
+        snap = _get(base, "/api/state?session=../records.sqlite&at=1005")
+        assert snap["aircraft"] == []
+    finally:
+        httpd.shutdown()
