@@ -67,31 +67,42 @@ default). The map is a fullscreen "scope"; a left panel and a bottom scrubber fl
   congested cluster repeatedly - to cycle through the planes under the pointer. Its ground
   track is painted as a smooth **Doppler gradient** - blue approaching, through white at
   closest approach, to red receding - interpolated from the predicted curve so the colour
-  reads correctly even across a coarse or overhead segment. The receiver is marked in gold
-  with concentric nautical-mile range rings, and the selected aircraft gets a line-of-sight
-  to the receiver. When an aircraft stops transmitting it lingers as a fading, desaturated
-  "ghost" for a few minutes before dropping off, so recent passes stay in view.
+  reads correctly even across a coarse or overhead segment. Colour carries meaning throughout:
+  **green** marks your receiver and everything about its reach (the station dot, the concentric
+  nautical-mile range rings - down to 5 and 10 nm for close-in traffic - and the coverage
+  footprint), **gold** marks the current selection (its silhouette plus a line-of-sight drawn
+  back to the receiver), and cyan is reserved for things you can click. Selecting an aircraft
+  that's off-screen eases the map over to frame it alongside the receiver; clicking the
+  receiver recenters the view on it. When an aircraft stops transmitting it lingers as a
+  fading, desaturated "ghost" for a few minutes before dropping off, so recent passes stay in
+  view.
 - **Left panel.** A status header - an **SDR status light** (green receiving / amber no-ADS-B
-  / red offline), receiver, uptime, aircraft count, decode rate, and the estimated
-  **oscillator offset** (see Calibration below) - above a steppable **all-time records** panel
-  (fastest/slowest, highest/lowest, biggest climb/descent, farthest/nearest, strongest/
-  weakest signal, widest Doppler swing, each with the flight that set it; page through them
-  with the `‹ ›` arrows) and a list of
-  aircraft cards - callsign, type, fit confidence, and a Doppler sparkline - in stable
-  first-seen order. Silent aircraft collapse to compact pills; click one to expand it. The
-  expanded card names the aircraft's **make, model, and registration** and shows a **photo**
-  when one is available (all resolved from its Mode S address - see below), then plots its
-  **measured vs. predicted** Doppler over the whole pass (blue points = measured per-burst
-  offset, green line = the curve predicted from its ADS-B state vector, with 0 Hz centered),
-  above its fit stats - correlation, confidence, burst count, signal strength - and its
-  range, altitude, speed, and track.
+  / red offline), the receiver position, uptime, aircraft count, decode rate, and the estimated
+  **oscillator offset** (see Calibration below) - sits above an **all-time records** ticker
+  (fastest/slowest, highest/lowest, biggest climb/descent, farthest/nearest, strongest/weakest
+  signal, widest Doppler swing, each with the flight that set it and when; step through them
+  with the `⇄` button, or hit the `⧗` to replay the exact moment a record was set - see Time
+  travel). Below that, a scannable **aircraft list**: one dense line per aircraft - flight,
+  type, a tiny Doppler spark, flight level, and range - under a labelled column header, in
+  stable first-seen order, with silent "ghost" aircraft dimmed in place. Selecting one opens an
+  always-visible **detail pane**: a photo thumbnail beside the aircraft's **make, model, and
+  registration** (all resolved from its Mode S address - see below) and its live **range /
+  altitude / speed / track**, then the **measured vs. predicted** Doppler plot over the whole
+  pass (blue points = measured per-burst offset, green line = the curve predicted from its
+  ADS-B state vector, 0 Hz centered), above a tight strip of fit stats - correlation,
+  confidence, burst count, signal. On a phone the detail pane becomes a swipe-to-close bottom
+  sheet, and tapping the thumbnail opens the full photo.
 - **Time travel.** Every session is recorded, so the bottom scrubber can replay it: drag
-  the playhead or hit play to animate past aircraft tracks over an activity-density strip,
-  then jump back to **LIVE**. Capture keeps running and recording the whole time you scrub.
-  Any recorded session can also be re-opened later with `--replay <file>`, which plays it
-  back through the same dashboard - auto-playing and looping - with **no SDR required**. A
-  sample session ships with the package, so `doppler1090 --demo --web` is the easiest way to
-  see doppler1090 without any hardware.
+  the playhead or hit play to animate past aircraft tracks over an activity-density strip, with
+  a **PAST** badge showing how long ago the frame you're viewing is. Hit **LIVE** to jump back
+  to the present, which recenters the map on the receiver. Capture keeps running and recording
+  the whole time you scrub. The all-time records tie straight into this: the **`⧗`** on any
+  record re-opens that record's own session at the exact instant it was set, with the
+  record-setting aircraft selected and the map flown in close - a one-click "show me that
+  moment," even from a session days ago, all in the same window. Any recorded session can also
+  be re-opened from the command line with `--replay <file>`, which plays it back through the
+  same dashboard - with **no SDR required**. A sample session ships with the package, so
+  `doppler1090 --demo --web` is the easiest way to see doppler1090 without any hardware.
 - **Self-calibration.** Since every aircraft transmits its own position, the *predicted*
   Doppler is known, and the leftover offset is the receiver's own clock error. doppler1090
   fits a clock model shared across all aircraft in view and reports the estimated **receiver
