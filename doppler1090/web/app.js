@@ -1128,6 +1128,10 @@ document.getElementById('list').addEventListener('pointerdown', e => {
   const hit = e.target.closest('[data-icao]');   // full card OR collapsed pill
   if (hit) select(hit.dataset.icao);
 });
+// mobile: the detail is a bottom sheet; its ▾ handle deselects to dismiss it
+document.getElementById('sheet-close').addEventListener('click', () => {
+  if (selected) select(selected);
+});
 
 // playback tick: advance the virtual clock, snap back to live at the end
 setInterval(() => {

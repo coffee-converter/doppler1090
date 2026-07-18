@@ -149,6 +149,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
    holds a placeholder when nothing is selected. */
 #detail { flex: 0 0 auto; min-height: 300px; padding: 11px 10px 12px;
           background: #090d12; border-top: 1px solid var(--edge-lit); }
+#sheet-close { display: none; }   /* mobile-only bottom-sheet dismiss handle */
 #detail #meta { margin-bottom: 10px; }   /* details sit above the graph */
 /* nothing selected: centre the placeholder in the detail area */
 #rail:not(.selected) #detail { display: flex; align-items: center;
@@ -229,11 +230,28 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
   #map { inset: 0 0 52% 0; }              /* map = top 48% */
   #rail {
     top: 48%; left: 8px; right: 8px; bottom: 104px; width: auto;
-    overflow-y: auto;                     /* the whole panel scrolls as one */
+    overflow: hidden;                     /* list scrolls internally; detail is a sheet */
   }
-  #list { flex: 0 0 auto; overflow: visible; }   /* no nested scroll area */
+  #list { flex: 1 1 auto; overflow-y: auto; }   /* list fills the rail and scrolls */
   #hud { font-size: 11px; gap: 4px 10px; }
   #plot { height: 188px; }
+
+  /* the detail becomes a dismissable bottom sheet: parked below, slides up when a
+     plane is selected; the ▾ handle (or picking another plane) dismisses it. */
+  #detail {
+    position: fixed; left: 8px; right: 8px; bottom: 104px; z-index: 1500;
+    min-height: 0; max-height: 74vh; overflow-y: auto;
+    border: 1px solid var(--edge-lit); border-radius: 12px;
+    box-shadow: 0 -10px 34px rgba(0,0,0,.55);
+    transform: translateY(130%); transition: transform .22s ease;
+  }
+  #rail.selected #detail { transform: translateY(0); }
+  #sheet-close {
+    display: block; position: sticky; top: 0; z-index: 1;
+    width: 100%; padding: 2px 0 7px; text-align: center;
+    background: #090d12; border: none; color: var(--ink-dim);
+    font-size: 18px; line-height: 1; cursor: pointer;
+  }
 
   #console { left: 8px; right: 8px; bottom: 8px; }
   #transport { flex-wrap: wrap; gap: 8px 6px; }
