@@ -37,6 +37,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 /* reserve the receiver-coord width so the "--" placeholder -> real coords swap
    can't toggle the flex-wrap row height (a momentary layout shift on load). */
 #hud #h-rx { min-width: 14ch; }
+#hud #h-uptime { min-width: 7ch; }
 #hud #h-clock.stale { opacity: .72; }   /* last estimate held while <2 aircraft */
 #hud .stat .u { margin-left: 3px; font-size: 10px; }
 /* SDR status light: colour flows from the state class onto both the dot (via
