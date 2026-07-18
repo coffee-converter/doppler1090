@@ -196,7 +196,8 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 /* larger inline photo of the tail (source thumbnails aren't big, so show it at
    full panel width rather than behind a click), then callsign + type · reg. */
 /* media row: photo thumbnail beside the telemetry list - no wasted space */
-#meta .media { display: flex; gap: 12px; align-items: stretch; margin: 9px 0 3px; }
+#meta .media { display: flex; gap: 12px; align-items: stretch; margin: 9px 0 3px;
+               padding-right: 6px; }   /* keep telemetry values off the panel edge */
 #meta .photo { flex: 0 0 auto; margin: 0; }
 #meta .photo img { display: block; width: 164px; height: 92px; object-fit: cover;
                    border-radius: 6px; cursor: zoom-in; }
