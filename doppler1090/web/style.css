@@ -294,3 +294,17 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
   #transport button { min-width: 30px; padding: 0 7px; }
   #clock { min-width: 0; flex: 1; }              /* fills the controls row */
 }
+
+/* wide drawer (landscape phone / small tablet): two columns so the plot uses the
+   space beside the photo + telemetry instead of leaving it empty. */
+@media (min-width: 620px) and (max-width: 760px) {
+  #detail {
+    display: grid; column-gap: 20px; align-content: start;
+    grid-template-columns: minmax(230px, 300px) 1fr;
+    grid-template-areas: "close close" "meta plot" "stats stats";
+  }
+  #sheet-close { grid-area: close; }
+  #meta { grid-area: meta; }
+  #plotwrap { grid-area: plot; align-self: center; min-width: 0; }
+  #stats { grid-area: stats; }
+}

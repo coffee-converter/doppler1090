@@ -40,11 +40,13 @@
     <div id="detail">
       <button id="sheet-close" type="button" aria-label="close details">close</button>
       <div id="meta"></div>
-      <div id="plotlegend">
-        <span class="lg measured">measured</span>
-        <span class="lg predicted">predicted</span>
+      <div id="plotwrap">
+        <div id="plotlegend">
+          <span class="lg measured">measured</span>
+          <span class="lg predicted">predicted</span>
+        </div>
+        <canvas id="plot"></canvas>
       </div>
-      <canvas id="plot"></canvas>
       <div id="stats"></div>
     </div>
   </aside>
