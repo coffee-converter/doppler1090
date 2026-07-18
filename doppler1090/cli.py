@@ -57,44 +57,49 @@ def process_chunk(t, iq, fs, rx_llh, store, burst_len, max_fix=1, phase_search=1
 
     added = 0
     for i in sel:
-        off = int(offs[i])
-        # Try the primary alignment, then a small phase search around it.
-        dec = decode(bits_to_hex(bits[i]), rx_llh[0], rx_llh[1], max_fix=max_fix)
-        o = off
-        if dec is None and phase_search:
-            for d in _phase_offsets(phase_search):
-                if d == 0:
-                    continue
-                oo = off + d
-                if oo < 0 or oo + burst_len > len(iq):
-                    continue
-                dec = decode(demodulate(iq[oo:oo + burst_len], fs),
-                             rx_llh[0], rx_llh[1], max_fix=max_fix)
-                if dec is not None:
-                    o = oo
-                    break
-        if dec is None:
+        try:
+            off = int(offs[i])
+            # Try the primary alignment, then a small phase search around it.
+            dec = decode(bits_to_hex(bits[i]), rx_llh[0], rx_llh[1], max_fix=max_fix)
+            o = off
+            if dec is None and phase_search:
+                for d in _phase_offsets(phase_search):
+                    if d == 0:
+                        continue
+                    oo = off + d
+                    if oo < 0 or oo + burst_len > len(iq):
+                        continue
+                    dec = decode(demodulate(iq[oo:oo + burst_len], fs),
+                                 rx_llh[0], rx_llh[1], max_fix=max_fix)
+                    if dec is not None:
+                        o = oo
+                        break
+            if dec is None:
+                continue
+            if health is not None:
+                health.mark_decode()        # a real ADS-B frame got through
+            sl = iq[o:o + burst_len]
+            msl = mag[o:o + burst_len]
+            icao = dec["icao"]
+            if "flight" in dec:
+                store.update_callsign(icao, dec["flight"], t)
+            if "lat" in dec:
+                store.update_position(icao, t, dec["lat"], dec["lon"], dec["alt"])
+            if "speed" in dec:
+                store.update_velocity(icao, t, dec["speed"], dec["track"], dec["vrate"])
+            mask = (msl > msl.mean()).astype(float)
+            f_off = estimate_burst_offset(sl, mask, fs)
+            # signal strength: RMS amplitude of the message's ON pulses (0..~1.4 of
+            # full scale); build_snapshot turns the recent average into dBFS.
+            on = msl[msl > msl.mean()]
+            sig = float(np.sqrt(np.mean(on * on))) if on.size else 0.0
+            before = store.burst_count(icao)
+            store.add_burst(icao, t, f_off, rx_llh, signal=sig)
+            added += store.burst_count(icao) - before
+        except Exception:
+            # one malformed frame must not tear down the whole chunk - the
+            # capture loop would misread that as an SDR fault and reopen the dongle
             continue
-        if health is not None:
-            health.mark_decode()        # a real ADS-B frame got through
-        sl = iq[o:o + burst_len]
-        msl = mag[o:o + burst_len]
-        icao = dec["icao"]
-        if "flight" in dec:
-            store.update_callsign(icao, dec["flight"], t)
-        if "lat" in dec:
-            store.update_position(icao, t, dec["lat"], dec["lon"], dec["alt"])
-        if "speed" in dec:
-            store.update_velocity(icao, t, dec["speed"], dec["track"], dec["vrate"])
-        mask = (msl > msl.mean()).astype(float)
-        f_off = estimate_burst_offset(sl, mask, fs)
-        # signal strength: RMS amplitude of the message's ON pulses (0..~1.4 of
-        # full scale); build_snapshot turns the recent average into dBFS.
-        on = msl[msl > msl.mean()]
-        sig = float(np.sqrt(np.mean(on * on))) if on.size else 0.0
-        before = store.burst_count(icao)
-        store.add_burst(icao, t, f_off, rx_llh, signal=sig)
-        added += store.burst_count(icao) - before
     return added
 
 
@@ -183,7 +188,17 @@ def build_parser():
     p.add_argument("--replay-speed", type=float, default=1.0,
                    help="replay playback rate (default 1.0 = real time; "
                         "2.0 = twice as fast)")
+    p.add_argument("--demo", action="store_true",
+                   help="replay the bundled sample session - a self-contained "
+                        "way to try doppler1090 with no SDR; add --web for the "
+                        "browser dashboard")
     return p
+
+
+def _bundled_sample():
+    """Filesystem path to the sample session shipped inside the package."""
+    from importlib.resources import files
+    return str(files("doppler1090") / "examples" / "sample-session.sqlite")
 
 
 def _run_replay(args):
@@ -251,6 +266,8 @@ def _replay_web(args, history, rx_llh, min_conf, ppm, t_start, t_end, speed):
 def main(argv=None):
     args = build_parser().parse_args(argv)
 
+    if args.demo:
+        args.replay = _bundled_sample()
     if args.replay:
         return _run_replay(args)
     if args.lat is None or args.lon is None:

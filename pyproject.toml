@@ -2,7 +2,7 @@
 name = "doppler1090"
 version = "0.1.0"
 requires-python = ">=3.11"
-dependencies = ["numpy", "scipy", "pyModeS>=3", "pyrtlsdr", "rich"]
+dependencies = ["numpy", "pyModeS>=3", "pyrtlsdr", "rich"]
 
 [build-system]
 requires = ["setuptools"]
@@ -13,3 +13,7 @@ doppler1090 = "doppler1090.cli:main"
 
 [tool.setuptools]
 packages = ["doppler1090"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+doppler1090 = ["web/**/*", "examples/*.sqlite"]

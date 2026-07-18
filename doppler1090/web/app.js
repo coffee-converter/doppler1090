@@ -764,11 +764,14 @@ function renderMeta(meta, a, ghostSince) {
   // a real photo of this exact tail (planespotters, by registration); clicking
   // opens the full photo page. Sits at the top of the detail.
   if (a.photo) {
+    // photo URLs come from third-party APIs; only let http(s) reach the href/src
+    // sinks so a compromised upstream can't inject a javascript: URL.
+    const safeUrl = u => /^https?:\/\//i.test(u || '') ? u : '';
     const fig = el('div', 'photo');
     const link = el('a');
-    link.href = a.photo_link || a.photo; link.target = '_blank'; link.rel = 'noopener';
+    link.href = safeUrl(a.photo_link || a.photo); link.target = '_blank'; link.rel = 'noopener';
     const img = document.createElement('img');
-    img.src = a.photo; img.alt = model || a.flight || a.icao; img.loading = 'lazy';
+    img.src = safeUrl(a.photo); img.alt = model || a.flight || a.icao; img.loading = 'lazy';
     img.onerror = () => fig.remove();     // e.g. offline: drop the broken image
     link.append(img); fig.append(link);
     if (a.photo_by)

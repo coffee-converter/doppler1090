@@ -1,0 +1,3 @@
+recursive-include doppler1090/web *
+recursive-include doppler1090/examples *
+include README.md LICENSE CITATION.cff

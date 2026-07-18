@@ -47,7 +47,13 @@ class TrackStore:
         return self._state.setdefault(icao, {})
 
     def update_position(self, icao, t, lat, lon, alt):
-        self._st(icao).update(lat=lat, lon=lon, alt=alt, t=t)
+        st = self._st(icao)
+        st.update(lat=lat, lon=lon, t=t)
+        # pyModeS returns alt=None for an "altitude unavailable" (0-code) frame,
+        # which still carries a valid lat/lon. Keep the last known altitude
+        # rather than storing None (which would crash the geometry math).
+        if alt is not None:
+            st["alt"] = alt
         self._last_seen[icao] = t
         if self.recorder:
             self.recorder.log_state(t, icao, lat=lat, lon=lon, alt=alt)
@@ -94,7 +100,8 @@ class TrackStore:
 
     def add_burst(self, icao, t, f_offset, rx_llh, signal=0.0):
         s = self._state.get(icao, {})
-        if not all(k in s for k in ("lat", "lon", "alt", "speed", "track", "vrate")):
+        if not all(s.get(k) is not None
+                   for k in ("lat", "lon", "alt", "speed", "track", "vrate")):
             return
         vr = radial_velocity(rx_llh, (s["lat"], s["lon"], s["alt"] * FT_TO_M),
                              s["speed"], s["track"], s["vrate"])

@@ -110,8 +110,8 @@ def test_replay_server_timeline_and_state():
     reconstructed mid-session frame has aircraft, with rx read from the file."""
     import os
     from doppler1090.history import History, read_session_meta
-    path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
-                                        "examples", "sample-session.sqlite"))
+    from doppler1090.cli import _bundled_sample
+    path = _bundled_sample()
     rx_llh, ppm = read_session_meta(path)
     history = History(path, max_age=60)
     t0, t1 = history.bounds()
