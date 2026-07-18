@@ -79,6 +79,7 @@ let layers = {};              // icao -> { marker, tracks:[polyline], data, ghos
 let selLayers = [];           // line-of-sight + closest-approach overlays
 let selected = null;
 let pendingFit = null;        // icao to reveal on the map after this render (fresh autoselect)
+let pendingFly = null;        // icao to fly in close to after this render (record replay)
 let latest = { aircraft: [] };
 let serverNow = 0;            // most recent server_time seen
 let hadAircraft = false;      // did the last live frame have any aircraft?
@@ -245,6 +246,12 @@ function render(state) {
   refreshRecord();
   // markers now placed: reveal a freshly auto-selected plane if it's off-screen
   if (pendingFit != null) { maybeFit(pendingFit); pendingFit = null; }
+  // record replay: fly in close on the record-setting plane once it's on the map
+  if (pendingFly != null) {
+    const d = layers[pendingFly] && layers[pendingFly].data;
+    if (d && d.lat != null) flyToPlane(d.lat, d.lon);
+    pendingFly = null;   // one-shot: attempt once, never linger onto a later frame
+  }
 }
 
 function removeEntry(icao) {
@@ -626,6 +633,21 @@ function flyToFit(lat, lon) {
   map.flyTo(map.unproject(mid.subtract([dx, dy]), z), z, { duration: FIT_MS / 1000 });
 }
 
+// Fly in *close* on one aircraft, centred in the visible rect at one below max
+// zoom (record replay: you want to study that plane, not fit the whole geometry).
+function flyToPlane(lat, lon) {
+  const z = Math.max(map.getMinZoom(), map.getMaxZoom() - 1);
+  if (window.innerWidth <= 760) {
+    map.flyTo([lat, lon], z, { duration: FIT_MS / 1000 });
+    return;
+  }
+  const size = map.getSize();
+  const dx = (320 + size.x) / 2 - size.x / 2;   // +160, clear the panel
+  const dy = (size.y - 84) / 2 - size.y / 2;    // -42, clear the console
+  const p = map.project([lat, lon], z);
+  map.flyTo(map.unproject(p.subtract([dx, dy]), z), z, { duration: FIT_MS / 1000 });
+}
+
 // Reveal `icao` only if it has a position and is currently off-screen.
 function maybeFit(icao) {
   const d = layers[icao] && layers[icao].data;
@@ -971,7 +993,9 @@ async function replayRecord(ts, icao) {
   await pollTimeline();                       // load that session's [start, end]
   seek(ts);                                   // fetchState(ts) with the session set
   if (icao) { selected = icao;
-    document.getElementById('rail').classList.add('selected'); }
+    document.getElementById('rail').classList.add('selected');
+    pendingFly = icao;                        // fly in close once the frame renders
+  }
   showReplayBanner(hit.session);
 }
 
