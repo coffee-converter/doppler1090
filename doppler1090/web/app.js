@@ -753,6 +753,9 @@ function renderMeta(meta, a, ghostSince) {
   }
   if (a.photo) {                                              // ...then the photo
     const fig = el('div', 'photo');
+    fig.dataset.full = _safeUrl(a.photo);       // mobile: tap the thumb -> lightbox
+    fig.dataset.link = _safeUrl(a.photo_link);
+    fig.dataset.by = a.photo_by || '';
     const img = document.createElement('img');
     img.src = _safeUrl(a.photo); img.alt = a.flight || a.icao; img.loading = 'lazy';
     img.onerror = () => fig.remove();
@@ -1128,9 +1131,54 @@ document.getElementById('list').addEventListener('pointerdown', e => {
   const hit = e.target.closest('[data-icao]');   // full card OR collapsed pill
   if (hit) select(hit.dataset.icao);
 });
-// mobile: the detail is a bottom sheet; its ▾ handle deselects to dismiss it
+// mobile: the detail is a drawer; the close handle deselects to dismiss it
 document.getElementById('sheet-close').addEventListener('click', () => {
   if (selected) select(selected);
+});
+// mobile: swipe the drawer down (from the top of its scroll) to dismiss it
+(() => {
+  const sheet = document.getElementById('detail');
+  let y0 = null, atTop = false;
+  sheet.addEventListener('touchstart', e => {
+    if (window.innerWidth > 760) { y0 = null; return; }
+    y0 = e.touches[0].clientY; atTop = sheet.scrollTop <= 0;
+  }, { passive: true });
+  sheet.addEventListener('touchend', e => {
+    if (y0 == null) return;
+    const dy = e.changedTouches[0].clientY - y0;
+    if (atTop && dy > 70 && selected) select(selected);   // swipe down from top -> close
+    y0 = null;
+  }, { passive: true });
+})();
+
+// ---- photo lightbox (mobile only: tap the small thumbnail to see it larger) --
+function openLightbox(full, link, by) {
+  document.getElementById('lb-img').src = full;
+  const cap = document.getElementById('lb-credit');
+  cap.replaceChildren();
+  if (link) {
+    const a = document.createElement('a');
+    a.href = link; a.target = '_blank'; a.rel = 'noopener';
+    a.textContent = by ? '© ' + by : 'view source';    // untrusted -> textContent
+    cap.appendChild(a);
+  } else if (by) {
+    cap.textContent = '© ' + by;
+  }
+  document.getElementById('lightbox').hidden = false;
+}
+function closeLightbox() {
+  document.getElementById('lightbox').hidden = true;
+  document.getElementById('lb-img').src = '';
+}
+document.getElementById('detail').addEventListener('click', e => {
+  const img = e.target.closest('.photo img');
+  if (img && window.innerWidth <= 760) {          // desktop shows it full-size inline
+    const fig = img.closest('.photo');
+    openLightbox(fig.dataset.full, fig.dataset.link, fig.dataset.by);
+  }
+});
+document.getElementById('lightbox').addEventListener('click', e => {
+  if (e.target.id === 'lightbox' || e.target.closest('#lb-close')) closeLightbox();
 });
 
 // playback tick: advance the virtual clock, snap back to live at the end
@@ -1149,7 +1197,10 @@ setInterval(() => {
 window.addEventListener('keydown', e => {
   if (e.key === ' ') { e.preventDefault(); document.getElementById('playPause').click(); }
   else if (e.key.toLowerCase() === 'l') goLive();
-  else if (e.key === 'Escape') select(selected);
+  else if (e.key === 'Escape') {
+    if (!document.getElementById('lightbox').hidden) closeLightbox();
+    else select(selected);
+  }
   else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') cycle(e.key === 'ArrowRight' ? 1 : -1);
 });
 function cycle(dir) {

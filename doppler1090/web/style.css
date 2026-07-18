@@ -197,6 +197,22 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #meta .placeholder { color: var(--ink-dim); font-size: 13px;
                      text-align: center; padding: 22px 4px; }
 
+/* ---- photo lightbox (mobile: tap the detail thumbnail) ---------------- */
+#lightbox { position: fixed; inset: 0; z-index: 2000; padding: 20px;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(3,5,8,.9); }
+#lightbox[hidden] { display: none; }
+#lightbox figure { margin: 0; max-width: 96vw; }
+#lightbox img { display: block; max-width: 96vw; max-height: 82vh;
+                border-radius: 8px; box-shadow: 0 10px 44px rgba(0,0,0,.6); }
+#lightbox figcaption { margin-top: 9px; text-align: center;
+                       font-size: 12px; color: var(--ink-dim); }
+#lightbox figcaption a { color: var(--ink-dim); text-decoration: none; }
+#lightbox figcaption a:hover { color: var(--accent); }
+#lb-close { position: fixed; top: 14px; right: 18px; z-index: 1;
+            background: none; border: none; color: var(--ink);
+            font-size: 26px; line-height: 1; cursor: pointer; }
+
 /* ---- bottom bar: scrubber only ---------------------------------------- */
 #console {
   position: fixed; left: 320px; right: 10px; bottom: 10px; z-index: 1000;
@@ -258,6 +274,10 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
     content: ''; display: block; width: 34px; height: 4px; margin: 0 auto 6px;
     background: var(--edge-lit); border-radius: 2px;
   }
+  /* photo shrinks to a tappable thumbnail (tap = lightbox); a full-width photo
+     would eat too much of the drawer. Desktop keeps the large inline photo. */
+  #meta .photo img { width: 120px; height: 84px; object-fit: cover; cursor: zoom-in; }
+  #meta .credit { text-align: left; }
 
   #console { left: 8px; right: 8px; bottom: 8px; }
   #transport { flex-wrap: wrap; gap: 8px 6px; }

@@ -57,5 +57,6 @@ def test_left_pane_structure():
     # detail is a dismissable bottom sheet on mobile
     assert 'id="sheet-close"' in html
     assert "#rail.selected #detail" in css          # sheet slides up on selection
-    # the lightbox was removed (larger inline photo instead)
-    assert "lightbox" not in js and "lightbox" not in html
+    # mobile: swipe-to-close drawer + tap-the-thumbnail photo lightbox
+    assert "openLightbox" in js and 'id="lightbox"' in html
+    assert "touchstart" in js and "touchend" in js   # swipe-to-close
