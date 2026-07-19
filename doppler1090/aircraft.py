@@ -55,8 +55,10 @@ UA = "doppler1090/1.0 (+https://github.com/coffee-converter/doppler1090)"
 # with an older version has its cached misses ("source=none") cleared once, so
 # aircraft a newly-added source can now resolve get re-tried instead of staying
 # blank forever. Stored in the DB via PRAGMA user_version.
-#   1: adsbdb (+ optional FAA)   2: added hexdb.io fallback
-_LOOKUP_VERSION = 2
+#   1: adsbdb (+ optional FAA)
+#   2: added hexdb.io fallback (re-try cached misses)
+#   3: complete the ICAO type code from hexdb (re-resolve rows that lack one)
+_LOOKUP_VERSION = 3
 
 # Corporate suffixes dropped from the manufacturer name before searching/keying
 # so "CIRRUS DESIGN CORP" and adsbdb's "CIRRUS" collapse to one type ("CIRRUS
@@ -113,11 +115,12 @@ class TypeStore:
         self._conn.execute(
             "CREATE TABLE IF NOT EXISTS type_photo_cache (key TEXT PRIMARY KEY, "
             "url TEXT, link TEXT, by TEXT, source TEXT, ts REAL)")
-        # When the provider chain has changed since this cache was written (e.g.
-        # hexdb was added), drop cached misses once so they re-resolve through
-        # the new chain instead of staying blank; then record the new version.
+        # When the provider chain has changed since this cache was written, drop
+        # every row without an ICAO type code - both cached misses and hits where
+        # the source had no type - so they re-resolve through the current chain
+        # (make/model comes back, and hexdb fills the type); then record the version.
         if self._conn.execute("PRAGMA user_version").fetchone()[0] < _LOOKUP_VERSION:
-            self._conn.execute("DELETE FROM type_cache WHERE source = 'none'")
+            self._conn.execute("DELETE FROM type_cache WHERE type IS NULL OR type = ''")
             self._conn.execute(f"PRAGMA user_version = {_LOOKUP_VERSION}")
         self._conn.commit()
         self._lock = threading.Lock()   # guards all _conn access
@@ -231,20 +234,37 @@ class TypeStore:
         if icao not in self._adsb_missed:
             hit = self._adsbdb(icao)     # may raise on transient error -> retry
             if hit:
-                return hit, "adsbdb"
+                return self._with_type(icao, hit), "adsbdb"
             self._adsb_missed.add(icao)  # confirmed adsbdb miss
         if icao not in self._hexdb_missed:
             hit = self._hexdb(icao)      # may raise on transient error -> retry
             if hit:
-                return hit, "hexdb"
+                return hit, "hexdb"      # hexdb already carries the type code
             self._hexdb_missed.add(icao)  # confirmed hexdb miss
         if self.use_faa:
             if not self._faa_ready:
                 return None, None        # wait for the registry import
             r = self._faa_get(icao)
             if r:
-                return r, "faa"
+                return self._with_type(icao, r), "faa"
         return None, "none"
+
+    def _with_type(self, icao, info):
+        """adsbdb and the FAA registry often return make/model but no ICAO type
+        code; hexdb reliably carries it. Fill it in so the compact list shows a
+        tidy code (E75L) instead of a truncated model, and the icon is right.
+        Best-effort: a hexdb miss/outage just leaves the type for a later run."""
+        if info.get("type") or icao in self._hexdb_missed:
+            return info
+        try:
+            hx = self._hexdb(icao)
+        except Exception:
+            return info                  # transient - don't block the make/model
+        if hx:
+            info["type"] = hx.get("type")
+        else:
+            self._hexdb_missed.add(icao)
+        return info
 
     def _get_json(self, url, source):
         """GET JSON with the shared UA. Returns the parsed body, or None on 404

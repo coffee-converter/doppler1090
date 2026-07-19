@@ -243,3 +243,25 @@ def test_stale_cache_misses_cleared_on_version_bump(tmp_path):
     assert "424724" not in store._mem              # stale miss dropped -> re-resolves
     assert store._mem.get("ABC123") == {           # real hit kept
         "make": "Boeing", "model": "737", "reg": "N1", "type": "B738"}
+
+
+def test_with_type_completes_missing_type_from_hexdb(tmp_path, monkeypatch):
+    store = _store(tmp_path)
+    monkeypatch.setattr(store, "_adsbdb", lambda icao: {   # hit, but no type code
+        "make": "Embraer", "model": "EMB-175 LR", "reg": "N123", "type": None})
+    monkeypatch.setattr(store, "_hexdb", lambda icao: {    # hexdb supplies the code
+        "make": "Embraer", "model": "ERJ 175", "reg": "N123", "type": "E75L"})
+    info, source = store._resolve("ABCDEF")
+    assert source == "adsbdb"                    # adsbdb make/model kept...
+    assert info["make"] == "Embraer" and info["model"] == "EMB-175 LR"
+    assert info["type"] == "E75L"                # ...type completed from hexdb
+
+
+def test_with_type_leaves_type_when_hexdb_also_lacks_it(tmp_path, monkeypatch):
+    store = _store(tmp_path)
+    monkeypatch.setattr(store, "_adsbdb", lambda icao: {
+        "make": "X", "model": "Y", "reg": "N1", "type": None})
+    monkeypatch.setattr(store, "_hexdb", lambda icao: None)   # hexdb has nothing
+    info, source = store._resolve("ABCDEF")
+    assert source == "adsbdb" and info["type"] is None
+    assert "ABCDEF" in store._hexdb_missed
