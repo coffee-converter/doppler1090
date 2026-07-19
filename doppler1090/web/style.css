@@ -200,8 +200,10 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 /* media row: photo thumbnail beside the telemetry list - no wasted space */
 #meta .media { display: flex; gap: 12px; align-items: stretch; margin: 9px 0 3px;
                padding-right: 6px; }   /* keep telemetry values off the panel edge */
-#meta .photo { flex: 0 0 auto; margin: 0; }
-#meta .photo img { display: block; width: 148px; height: 92px; object-fit: cover;
+/* photo flexes (shrinks when the panel is tight, grows to 164 when roomy) so the
+   telemetry beside it never gets squeezed off the edge; object-fit crops cleanly. */
+#meta .photo { flex: 1 1 auto; min-width: 90px; max-width: 164px; margin: 0; }
+#meta .photo img { display: block; width: 100%; height: 92px; object-fit: cover;
                    border-radius: 6px; cursor: zoom-in; }
 #meta .credit { font-size: 9px; color: #57626f; margin-top: 3px; }
 #meta .credit a { color: inherit; text-decoration: none; }
@@ -216,7 +218,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 /* telemetry: a compact label/value table beside the thumbnail (colour-coded
    values, right-aligned so their digits line up). Content-width, left-packed -
    so labels and values stay close instead of flung to opposite edges. */
-#meta .kin { flex: 0 1 auto; margin-left: auto; display: grid;
+#meta .kin { flex: 0 0 auto; margin-left: auto; display: grid;
              grid-template-columns: auto auto; gap: 4px 10px; align-content: center;
              align-items: baseline; justify-content: start; font-family: var(--mono); }
 #meta .kin .krow { display: contents; }
