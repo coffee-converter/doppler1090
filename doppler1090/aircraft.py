@@ -51,14 +51,18 @@ AIRPORTDATA = "https://airport-data.com/api/ac_thumb.json?r={}&n=1"
 WIKI_API = "https://commons.wikimedia.org/w/api.php"
 UA = "doppler1090/1.0 (+https://github.com/coffee-converter/doppler1090)"
 
-# Bumped whenever the lookup provider chain changes. On startup a cache stamped
-# with an older version has its cached misses ("source=none") cleared once, so
-# aircraft a newly-added source can now resolve get re-tried instead of staying
-# blank forever. Stored in the DB via PRAGMA user_version.
-#   1: adsbdb (+ optional FAA)
-#   2: added hexdb.io fallback (re-try cached misses)
-#   3: complete the ICAO type code from hexdb (re-resolve rows that lack one)
+# Cache-migration versions: bump one when its provider chain changes and, on the
+# next startup, that cache's stale rows are cleared once so the new chain gets a
+# fresh shot (the applied version is recorded per-key in the `meta` table).
+# Adding a source later - type or photo - is just a bump here.
+#   lookup (type_cache):  1 adsbdb(+FAA)   2 +hexdb (re-try misses)
+#                         3 complete the ICAO type code from hexdb (re-resolve
+#                           rows that lack one)
+#   photo  (photo caches): 1 re-fetch cached photo misses - reg photos and the
+#                           Wikimedia make/model type photos - since all those
+#                           sources grow over time (and to pick up new sources)
 _LOOKUP_VERSION = 3
+_PHOTO_VERSION = 1
 
 # Corporate suffixes dropped from the manufacturer name before searching/keying
 # so "CIRRUS DESIGN CORP" and adsbdb's "CIRRUS" collapse to one type ("CIRRUS
@@ -115,14 +119,18 @@ class TypeStore:
         self._conn.execute(
             "CREATE TABLE IF NOT EXISTS type_photo_cache (key TEXT PRIMARY KEY, "
             "url TEXT, link TEXT, by TEXT, source TEXT, ts REAL)")
-        # When the provider chain has changed since this cache was written, drop
-        # every row without an ICAO type code - both cached misses and hits where
-        # the source had no type - so they re-resolve through the current chain
-        # (make/model comes back, and hexdb fills the type); then record the version.
-        if self._conn.execute("PRAGMA user_version").fetchone()[0] < _LOOKUP_VERSION:
-            self._conn.execute("DELETE FROM type_cache WHERE type IS NULL OR type = ''")
-            self._conn.execute(f"PRAGMA user_version = {_LOOKUP_VERSION}")
+        self._conn.execute(
+            "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value INTEGER)")
         self._conn.commit()
+        # Run each cache's migration once when its provider chain version advances.
+        # lookup: drop rows without an ICAO type code (misses, and hits whose
+        #   source had no type) so they re-resolve - make/model returns and hexdb
+        #   fills the type. photo: drop cached photo misses so they re-fetch.
+        self._migrate("lookup", _LOOKUP_VERSION,
+                      "DELETE FROM type_cache WHERE type IS NULL OR type = ''")
+        self._migrate("photo", _PHOTO_VERSION,
+                      "DELETE FROM photo_cache WHERE source = 'none'",
+                      "DELETE FROM type_photo_cache WHERE source = 'none'")
         self._lock = threading.Lock()   # guards all _conn access
         self._mem = {}                  # icao -> {make,model,reg,type} | None
         for icao, make, model, reg, typ, source in self._conn.execute(
@@ -151,6 +159,20 @@ class TypeStore:
         threading.Thread(target=self._worker, daemon=True).start()
         if self.use_faa and not self._faa_ready:
             threading.Thread(target=self._import_faa, daemon=True).start()
+
+    def _migrate(self, key, version, *statements):
+        """Run one-time cache cleanups when a provider chain's version advances.
+        The applied version is stored per-key in the ``meta`` table, so bumping a
+        constant (e.g. after adding a source) re-fires the cleanup exactly once."""
+        cur = self._conn.execute(
+            "SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+        if cur and cur[0] >= version:
+            return
+        for sql in statements:
+            self._conn.execute(sql)
+        self._conn.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)",
+                           (key, version))
+        self._conn.commit()
 
     def get(self, icao):
         """Cached {make,model,reg} or None; schedules a lookup on a miss."""

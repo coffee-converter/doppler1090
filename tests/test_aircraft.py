@@ -265,3 +265,23 @@ def test_with_type_leaves_type_when_hexdb_also_lacks_it(tmp_path, monkeypatch):
     info, source = store._resolve("ABCDEF")
     assert source == "adsbdb" and info["type"] is None
     assert "ABCDEF" in store._hexdb_missed
+
+
+def test_photo_misses_refetched_on_version_bump(tmp_path):
+    import sqlite3
+    p = str(tmp_path / "t.db")
+    c = sqlite3.connect(p)
+    c.execute("CREATE TABLE type_photo_cache (key TEXT PRIMARY KEY, url TEXT, "
+              "link TEXT, by TEXT, source TEXT, ts REAL)")
+    c.execute("CREATE TABLE photo_cache (reg TEXT PRIMARY KEY, url TEXT, link TEXT, "
+              "by TEXT, source TEXT, ts REAL)")
+    c.execute("INSERT INTO type_photo_cache VALUES ('EMBRAER E75',NULL,NULL,NULL,'none',0)")
+    c.execute("INSERT INTO type_photo_cache VALUES ('BOEING 737','u','l','b','wikimedia',0)")
+    c.execute("INSERT INTO photo_cache VALUES ('N1',NULL,NULL,NULL,'none',0)")
+    c.execute("INSERT INTO photo_cache VALUES ('N2','y','l','b','planespotters',0)")
+    c.commit(); c.close()
+    store = TypeStore(p)
+    assert "EMBRAER E75" not in store._type_photo_mem      # Wikimedia miss -> re-fetch
+    assert store._type_photo_mem.get("BOEING 737") == {"url": "u", "link": "l", "by": "b"}
+    assert "N1" not in store._photo_mem                    # reg-photo miss -> re-fetch
+    assert store._photo_mem.get("N2") == {"url": "y", "link": "l", "by": "b"}
