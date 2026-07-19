@@ -130,6 +130,8 @@ def build_snapshot(store, rx_llh, min_conf=0.0, at=None, server_time=None,
         if at is None:                         # only the live frame sets records
             for a in aircraft:
                 records.observe(a, st)
+            if type_store is not None:         # heal blank identity on old records
+                records.backfill(type_store.get, st)
         snap["records"] = records.snapshot()   # shown while scrubbing too
     if coverage is not None:
         if at is None:

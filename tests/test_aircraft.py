@@ -227,3 +227,19 @@ def test_resolve_falls_back_to_hexdb_when_adsbdb_misses(tmp_path, monkeypatch):
     info, source = store._resolve("424724")
     assert source == "hexdb"
     assert info["reg"] == "VP-CCQ" and info["type"] == "GL7T"
+
+
+def test_stale_cache_misses_cleared_on_version_bump(tmp_path):
+    import sqlite3
+    p = str(tmp_path / "t.db")
+    c = sqlite3.connect(p)
+    c.execute("CREATE TABLE type_cache (icao TEXT PRIMARY KEY, make TEXT, "
+              "model TEXT, reg TEXT, type TEXT, source TEXT, ts REAL)")
+    c.execute("INSERT INTO type_cache VALUES ('424724',NULL,NULL,NULL,NULL,'none',0)")
+    c.execute("INSERT INTO type_cache VALUES ('ABC123','Boeing','737','N1','B738','adsbdb',0)")
+    c.execute("PRAGMA user_version = 1")            # a pre-hexdb cache
+    c.commit(); c.close()
+    store = TypeStore(p)
+    assert "424724" not in store._mem              # stale miss dropped -> re-resolves
+    assert store._mem.get("ABC123") == {           # real hit kept
+        "make": "Boeing", "model": "737", "reg": "N1", "type": "B738"}

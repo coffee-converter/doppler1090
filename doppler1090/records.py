@@ -38,6 +38,7 @@ class Records:
                 pass
         self._conn.commit()
         self._lock = threading.Lock()
+        self._last_backfill = 0.0        # throttle for identity backfill
         self._rec = {}   # metric -> {value, flight, reg, icao, make, model, ts}
         for row in self._conn.execute(
                 "SELECT metric, value, flight, reg, icao, make, model, ts "
@@ -108,6 +109,25 @@ class Records:
         sig = a.get("rssi")
         rec("sig_max_db", sig);      rec("sig_min_db", sig)        # strongest / weakest
         rec("dop_span_hz", a.get("dop_span"))                       # widest swing
+
+    def backfill(self, get_fn, now, interval=60.0):
+        """Fill in blank make/model/reg on records whose aircraft isn't live
+        right now (so ``observe``'s ``_fill_identity`` never fires for it) but
+        whose ICAO now resolves via ``get_fn`` - a type lookup that schedules on
+        a miss and returns ``{make,model,reg}`` once resolved. Throttled to once
+        per ``interval`` so it's ~free on the snapshot path."""
+        if now - self._last_backfill < interval:
+            return
+        self._last_backfill = now
+        with self._lock:
+            blanks = {r["icao"] for r in self._rec.values()
+                      if r.get("icao") and not r.get("make")}
+        for icao in blanks:
+            info = get_fn(icao)          # schedules the lookup on first miss
+            if info and (info.get("make") or info.get("model") or info.get("reg")):
+                self._fill_identity({"icao": icao, "flight": None,
+                                     "reg": info.get("reg"), "make": info.get("make"),
+                                     "model": info.get("model")})
 
     def snapshot(self):
         with self._lock:

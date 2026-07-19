@@ -51,6 +51,13 @@ AIRPORTDATA = "https://airport-data.com/api/ac_thumb.json?r={}&n=1"
 WIKI_API = "https://commons.wikimedia.org/w/api.php"
 UA = "doppler1090/1.0 (+https://github.com/coffee-converter/doppler1090)"
 
+# Bumped whenever the lookup provider chain changes. On startup a cache stamped
+# with an older version has its cached misses ("source=none") cleared once, so
+# aircraft a newly-added source can now resolve get re-tried instead of staying
+# blank forever. Stored in the DB via PRAGMA user_version.
+#   1: adsbdb (+ optional FAA)   2: added hexdb.io fallback
+_LOOKUP_VERSION = 2
+
 # Corporate suffixes dropped from the manufacturer name before searching/keying
 # so "CIRRUS DESIGN CORP" and adsbdb's "CIRRUS" collapse to one type ("CIRRUS
 # SR22T") - both a cleaner Wikimedia query and a shared cache key across sources.
@@ -106,6 +113,12 @@ class TypeStore:
         self._conn.execute(
             "CREATE TABLE IF NOT EXISTS type_photo_cache (key TEXT PRIMARY KEY, "
             "url TEXT, link TEXT, by TEXT, source TEXT, ts REAL)")
+        # When the provider chain has changed since this cache was written (e.g.
+        # hexdb was added), drop cached misses once so they re-resolve through
+        # the new chain instead of staying blank; then record the new version.
+        if self._conn.execute("PRAGMA user_version").fetchone()[0] < _LOOKUP_VERSION:
+            self._conn.execute("DELETE FROM type_cache WHERE source = 'none'")
+            self._conn.execute(f"PRAGMA user_version = {_LOOKUP_VERSION}")
         self._conn.commit()
         self._lock = threading.Lock()   # guards all _conn access
         self._mem = {}                  # icao -> {make,model,reg,type} | None
